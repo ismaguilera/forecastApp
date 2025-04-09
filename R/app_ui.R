@@ -1,155 +1,5 @@
 # R/app_ui.R
 
-# The application User-Interface
-# @param request Internal parameter for `{shiny}`. DO NOT REMOVE.
-# @import shiny
-# @import rintrojs
-# @noRd
-# app_ui <- function(request) {
-#   tagList(
-#     # Required for rintrojs
-#     rintrojs::introjsUI(),
-#     # Leave this function for adding external resources
-#     golem_add_external_resources(),
-#     # Use fluidPage for overall structure
-#     fluidPage(
-#       title = "forecastApp", # Add browser title
-#       div(style="padding: 10px;", # Add some padding
-#           actionButton("startTour", "Start Guided Tour", icon = icon("info-circle"), class="btn-sm btn-info")
-#       ),
-#       h1("forecastApp - Time Series Forecasting"),
-#       hr(),
-#       # Define the sidebar layout
-#       sidebarLayout(
-#         # --- Sidebar Panel ---
-#         sidebarPanel(
-#           width = 4, # Adjust width as needed
-#           h3("Inputs & Controls"),
-#           # Wrap sections in divs with IDs for potential targeting
-#           div(id = "data_input_section", mod_data_input_ui("data_input_1")),
-#           # mod_data_input_ui("data_input_1"),
-#           hr(),
-#           # h4("Preprocessing"), # Add sub-heading
-#           # mod_preprocess_controls_ui("preprocess_controls_1"),
-#           div(id = "preprocess_section",
-#               h4("Preprocessing"),
-#               mod_preprocess_controls_ui("preprocess_controls_1")
-#           ),
-#           hr(),
-#           # Model config is already inside its own module UI with h3
-#           # mod_model_config_ui("model_config_1")
-#           div(id = "model_config_section", mod_model_config_ui("model_config_1"))
-#         ), # End sidebarPanel
-#
-#         # --- Main Panel ---
-#         mainPanel(
-#           width = 8, # Adjust width (should sum to 12 with sidebar)
-#           h3("Results"), # Heading for the main panel outputs
-#           div(id = "plot_output_section", mod_results_plot_ui("results_plot_1")),
-#           hr(),
-#           div(id = "model_summary_section", mod_model_summary_ui("model_summary_1")),
-#           hr(),
-#           div(id = "table_output_section", mod_results_table_ui("results_table_1")),
-#           hr(),
-#           div(id = "extra_plot_output_section", mod_extra_plots_ui("extra_plots_1"))
-#         ) # End mainPanel
-#       ) # End sidebarLayout
-#     ) # End fluidPage
-#   ) # End tagList
-# }
-
-# R/app_ui.R
-
-# The application User-Interface
-# @param request Internal parameter for `{shiny}`. DO NOT REMOVE.
-# @import shiny
-# @import rintrojs
-# @import bslib
-# @noRd
-# app_ui <- function(request) {
-#   tagList(
-#     # Required for rintrojs
-#     rintrojs::introjsUI(),
-#     # Leave this function for adding external resources
-#     golem_add_external_resources(),
-#
-#     # Use fluidPage for overall structure + bslib theme
-#     fluidPage(
-#       # Apply a Bootstrap 5 theme (e.g., "cerulean")
-#       theme = bslib::bs_theme(version = 5, bootswatch = "cerulean"),
-#       title = "forecastApp", # Browser title
-#
-#       # Optional: Add tour button outside the main layout maybe?
-#       div(style="padding: 5px 15px; float: right;", # Position top-rightish
-#           actionButton("startTour", "Tour", icon = icon("info-circle"), class="btn-sm")
-#       ),
-#
-#       # Main App Title
-#       h2("forecastApp - Time Series Forecasting"), # Use h2 maybe?
-#       hr(),
-#
-#       # Use bslib's sidebar layout
-#       bslib::layout_sidebar(
-#         # --- Sidebar Panel ---
-#         sidebar = bslib::sidebar(
-#           title = "Controls & Configuration", # Sidebar title
-#           width = 350, # Adjust width (can use pixels or percentage)
-#
-#           # Wrap sections in Cards
-#           bslib::card(
-#             bslib::card_header("1. Data Input"),
-#             bslib::card_body(
-#               mod_data_input_ui("data_input_1")
-#             )
-#           ),
-#           bslib::card(
-#             bslib::card_header("2. Preprocessing & Split"),
-#             bslib::card_body(
-#               mod_preprocess_controls_ui("preprocess_controls_1")
-#             )
-#           ),
-#           bslib::card(
-#             bslib::card_header("3. Model Configuration & Run"),
-#             bslib::card_body(
-#               mod_model_config_ui("model_config_1")
-#             )
-#           )
-#         ), # End sidebar argument
-#
-#         # --- Main Panel Content ---
-#         # Arrange results using cards as well
-#         bslib::card(
-#           bslib::card_header("Forecast Plot"),
-#           bslib::card_body(
-#             mod_results_plot_ui("results_plot_1")
-#           )
-#         ),
-#         bslib::card(
-#           bslib::card_header("Model Summary"),
-#           bslib::card_body(
-#             mod_model_summary_ui("model_summary_1")
-#           )
-#         ),
-#         bslib::card(
-#           bslib::card_header("Performance Metrics"),
-#           bslib::card_body(
-#             mod_results_table_ui("results_table_1")
-#           )
-#         ),
-#         bslib::card(
-#           bslib::card_header("Additional Plots"),
-#           bslib::card_body(
-#             mod_extra_plots_ui("extra_plots_1")
-#           )
-#         )
-#         # Can add more cards or other bslib components here
-#       ) # End layout_sidebar
-#     ) # End fluidPage
-#   ) # End tagList
-# }
-
-# R/app_ui.R
-
 #' The application User-Interface using bslib::page_navbar
 #' @param request Internal parameter for `{shiny}`. DO NOT REMOVE.
 #' @import shiny
@@ -186,20 +36,36 @@ app_ui <- function(request) {
             mod_data_input_ui("data_input_1") # Module UI would go here
           ), # End sidebar
           # Main content for Data panel
-          bslib::card(
-            bslib::card_header("Preprocessing & Split"),
-            bslib::card_body(
-              # Placeholder for Preprocessing Controls Module UI
-              # tags$p("Placeholder for Aggregation, Train/Test Split controls (e.g., mod_preprocess_controls_ui)"),
-              mod_preprocess_controls_ui("preprocess_controls_1") # Module UI would go here
-            )
-          ),
-          bslib::card( # Card for decomposition plot
-            bslib::card_header("Time Series Decomposition"),
-            bslib::card_body(
-              mod_decomposition_plot_ui("decomposition_plot_1") # Call new module UI
+          bslib::accordion(
+            open = c("Preprocessing & Split"),
+            bslib::accordion_panel(
+              "Preprocessing & Split",
+              mod_preprocess_controls_ui("preprocess_controls_1")
+            ),
+            bslib::accordion_panel(
+              "Time Series Decomposition",
+              mod_decomposition_plot_ui("decomposition_plot_1")
             )
           )
+
+          # bslib::card(
+          #   bslib::card_header("Preprocessing & Split"),
+          #   bslib::card_body(
+          #     min_height = 500,
+          #     full_screen = TRUE,
+          #     # Placeholder for Preprocessing Controls Module UI
+          #     # tags$p("Placeholder for Aggregation, Train/Test Split controls (e.g., mod_preprocess_controls_ui)"),
+          #     mod_preprocess_controls_ui("preprocess_controls_1") # Module UI would go here
+          #   )
+          # ),
+          # bslib::card( # Card for decomposition plot
+          #   bslib::card_header("Time Series Decomposition"),
+          #   bslib::card_body(
+          #     min_height = 500,
+          #     full_screen = TRUE,
+          #     mod_decomposition_plot_ui("decomposition_plot_1") # Call new module UI
+          #   )
+          # )
         ) # End layout_sidebar for Data panel
       ), # End Data nav_panel
 
@@ -207,25 +73,25 @@ app_ui <- function(request) {
       bslib::nav_panel(
         title = tagList(shiny::icon("gears"), "Model"),
         # Internal layout for this panel
-        bslib::layout_sidebar(
-          sidebar = bslib::sidebar(
-            title = "Models"
-            # width = 350,
-            # Placeholder for Model Selection/Config Module UI
-            # tags$p("Placeholder for Model Configuration Tabs (e.g., mod_model_config_ui)"),
-            # tags$p("Placeholder for Run Forecast Button"),
-             # Module UI would go here
-          ), # End sidebar
+        # bslib::layout_sidebar(
+        #   sidebar = bslib::sidebar(
+        #     title = "Models"
+        #     # width = 350,
+        #     # Placeholder for Model Selection/Config Module UI
+        #     # tags$p("Placeholder for Model Configuration Tabs (e.g., mod_model_config_ui)"),
+        #     # tags$p("Placeholder for Run Forecast Button"),
+        #      # Module UI would go here
+        #   ), # End sidebar
           # Main content for Model panel
           bslib::card(
-            bslib::card_header("Configuration by model"),
+            bslib::card_header("Models"),
             bslib::card_body(
               # Placeholder - Config details might be primarily in sidebar
               # tags$p("Detailed model parameters appear in the sidebar.")
               mod_model_config_ui("model_config_1")
             )
           )
-        ) # End layout_sidebar for Model panel
+        # ) # End layout_sidebar for Model panel
       ), # End Model nav_panel
 
       # --- Forecast Results Panel ---
@@ -241,33 +107,45 @@ app_ui <- function(request) {
             mod_model_summary_ui("model_summary_1") # Module UI would go here
           ), # End sidebar
           # Main content for Results panel (arranged vertically)
-          bslib::card(
-            bslib::card_header("Forecast plot"),
-            bslib::card_body(
-              # Placeholder for Results Plot Module UI
-              min_height = 400,
-              # tags$p("Placeholder for main forecast plot (e.g., mod_results_plot_ui)"),
-              mod_results_plot_ui("results_plot_1") # Module UI would go here
-            )
-          ),
-          bslib::card(
-            bslib::card_header("Model performance metrics"),
-            bslib::card_body(
-              # Placeholder for Metrics Table Module UI
-              min_height = 400,
-              # tags$p("Placeholder for metrics table (e.g., mod_results_table_ui)"),
-              mod_results_table_ui("results_table_1") # Module UI would go here
-            )
-          ),
-          bslib::card(
-            bslib::card_header("Additional plots"),
-            bslib::card_body(
-              # Placeholder for Extra Plots Module UI
-              min_height = 400,
-              # tags$p("Placeholder for cumulative/yearly plots (e.g., mod_extra_plots_ui)"),
-              mod_extra_plots_ui("extra_plots_1") # Module UI would go here
-            )
+          bslib::navset_card_underline(
+            title = "Visualizations",
+            # Panel with plot ----
+            bslib::nav_panel("Plot",h1="Forecast plot", mod_results_plot_ui("results_plot_1")),
+
+            # Panel with summary ----
+            bslib::nav_panel("Performance",h1="Model performance metrics", mod_results_table_ui("results_table_1")),
+
+            # Panel with table ----
+            bslib::nav_panel("Extra Plots",h1="Additional plots", mod_extra_plots_ui("extra_plots_1"))
           )
+
+          # bslib::card(
+          #   bslib::card_header("Forecast plot"),
+          #   bslib::card_body(
+          #     # Placeholder for Results Plot Module UI
+          #     min_height = 400,
+          #     # tags$p("Placeholder for main forecast plot (e.g., mod_results_plot_ui)"),
+          #     mod_results_plot_ui("results_plot_1") # Module UI would go here
+          #   )
+          # ),
+          # bslib::card(
+          #   bslib::card_header("Model performance metrics"),
+          #   bslib::card_body(
+          #     # Placeholder for Metrics Table Module UI
+          #     min_height = 250,
+          #     # tags$p("Placeholder for metrics table (e.g., mod_results_table_ui)"),
+          #     mod_results_table_ui("results_table_1") # Module UI would go here
+          #   )
+          # ),
+          # bslib::card(
+          #   bslib::card_header("Additional plots"),
+          #   bslib::card_body(
+          #     # Placeholder for Extra Plots Module UI
+          #     min_height = 500,
+          #     # tags$p("Placeholder for cumulative/yearly plots (e.g., mod_extra_plots_ui)"),
+          #     mod_extra_plots_ui("extra_plots_1") # Module UI would go here
+          #   )
+          # )
         ) # End layout_sidebar for Results panel
       ), # End Results nav_panel
 
