@@ -1,0 +1,52 @@
+Package: forecastApp
+Title: A Modular Shiny Forecasting Application
+Version: 0.0.0.9000
+Authors@R:
+    person(given = "First",
+           family = "Last",
+           role = c("aut", "cre"),
+           email = "first.last@example.com",
+           comment = c(ORCID = "YOUR-ORCID-ID"))
+Description: An interactive application for time series forecasting built with Shiny and Golem.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Imports:
+    shiny,
+    golem,
+    readxl,
+    DT,
+    dplyr,
+    lubridate,
+    utils,
+    plotly,
+    rlang,
+    magrittr,
+    shinyjs,
+    forecast,
+    prophet,
+    xgboost,
+    recipes,
+    parsnip,
+    yardstick,
+    tidyr,
+    tibble,
+    slider,
+    rintrojs,
+    timetk,
+    yaml,
+    config,
+    bslib,
+    mgcv,
+    stats
+Suggests:
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown,
+    pkgload,
+    htmltools
+Config/golem/version: 0.0.0.9000
+Config/golem/name: forecastApp
+Config/testthat/edition: 3
+VignetteBuilder: knitr
+RoxygenNote: 7.3.2

@@ -1,0 +1,14 @@
+default:
+  golem_name: forecastApp
+  golem_version: 0.0.0.9000
+  app_prod: no
+  forecast_horizon_default: 150
+  default_data_file: "datos_20250401.csv"
+  default_holiday_file: "feriados.csv"
+
+production:
+  app_prod: yes
+  forecast_horizon_default: 150
+
+dev:
+  golem_wd: !expr golem::pkg_path()

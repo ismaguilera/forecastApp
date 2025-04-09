@@ -1,0 +1,12 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^data-raw$
+dev_history.R
+^dev$
+$run_dev.*
+^.here$
+^tests$
+^\.Rhistory$
+^\.RData$
+^\.DS_Store$
+^.*\.tar\.gz$

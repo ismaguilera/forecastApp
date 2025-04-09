@@ -1,0 +1,10 @@
+name: PronosticoApp
+title:
+username: ismaguilera
+account: ismaguilera
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 14476002
+bundleId: 10086323
+url: https://ismaguilera.shinyapps.io/PronosticoApp/
+version: 1
