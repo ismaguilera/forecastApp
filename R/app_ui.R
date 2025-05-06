@@ -9,6 +9,7 @@
 app_ui <- function(request) {
   tagList(
     # Required for rintrojs (if still using the tour)
+    shinyjs::useShinyjs(), # Ensure this is present ONCE in the main UI
     rintrojs::introjsUI(),
     # Leave this function for adding external resources
     golem_add_external_resources(),
@@ -37,7 +38,7 @@ app_ui <- function(request) {
           ), # End sidebar
           # Main content for Data panel
           bslib::accordion(
-            open = c("Preprocessing & Split"),
+            open = c("Preprocessing & Split","Time Series Decomposition"),
             bslib::accordion_panel(
               "Preprocessing & Split",
               mod_preprocess_controls_ui("preprocess_controls_1")
@@ -83,14 +84,14 @@ app_ui <- function(request) {
         #      # Module UI would go here
         #   ), # End sidebar
           # Main content for Model panel
-          bslib::card(
-            bslib::card_header("Models"),
-            bslib::card_body(
+          # bslib::card(
+            # bslib::card_header("Models"),
+            # bslib::card_body(
               # Placeholder - Config details might be primarily in sidebar
               # tags$p("Detailed model parameters appear in the sidebar.")
               mod_model_config_ui("model_config_1")
-            )
-          )
+            # )
+          # )
         # ) # End layout_sidebar for Model panel
       ), # End Model nav_panel
 
@@ -107,6 +108,19 @@ app_ui <- function(request) {
             mod_model_summary_ui("model_summary_1") # Module UI would go here
           ), # End sidebar
           # Main content for Results panel (arranged vertically)
+          bslib::card(
+            bslib::card_body(
+              # Add padding or alignment if needed
+              div(style = "display: flex; justify-content: flex-end;", # Align button right
+                  downloadButton(
+                    outputId = "downloadForecastData",
+                    label = "Download Forecasts (CSV)",
+                    icon = shiny::icon("download"),
+                    class = "btn-success" # Optional styling
+                  )
+              )
+            )
+          ),
           bslib::navset_card_underline(
             title = "Visualizations",
             # Panel with plot ----

@@ -1,8 +1,5 @@
 # R/utils_train_forecast.R
 
-# Helper function (define once, e.g., in R/utils_helpers.R or here initially)
-`%||%` <- function(a, b) if (!is.null(a) && !is.na(a)) a else b
-
 #' Train ARIMA Model
 #'
 #' Trains an ARIMA model using forecast::Arima or forecast::auto.arima.
@@ -19,6 +16,7 @@
 #' @import forecast dplyr tibble lubridate
 #' @importFrom stats ts frequency start fitted cycle time
 #' @importFrom lubridate year yday weeks
+#' @importFrom rlang %||%
 train_arima <- function(train_df, config, aggregation_level) {
   # Basic validation
   if (!is.data.frame(train_df) || !all(c("ds", "y") %in% names(train_df))) {
@@ -1075,6 +1073,7 @@ train_prophet <- function(train_df, config, holidays_df = NULL, regressors_df = 
       holidays = holidays_df # Pass holidays df to prophet constructor
       # Can add holidays etc. here if needed later
     )
+
     if (add_regressors_flag) {
       for (reg_name in regressor_names) {
         m <- prophet::add_regressor(m, name = reg_name) # Add PRIOR to fitting
@@ -1166,6 +1165,7 @@ forecast_prophet <- function(model, periods_to_generate, freq = "day", capacity 
       dplyr::select(ds, yhat, yhat_lower, yhat_upper) %>%
       dplyr::mutate(ds = lubridate::as_date(ds)) # Ensure ds is Date type here
 
+
   }, error = function(e) {
     warning(paste("Prophet forecast generation failed:", e$message))
     fcst_df <<- NULL
@@ -1227,6 +1227,8 @@ train_xgboost <- function(prep_recipe, config) {
 
     train_x <- as.matrix(train_x_df)
 
+    message("train_xgboost 1")
+
     # Create DMatrix
     dtrain <- xgboost::xgb.DMatrix(data = train_x, label = train_y)
 
@@ -1248,6 +1250,8 @@ train_xgboost <- function(prep_recipe, config) {
       nrounds = config$nrounds,
       verbose = 1 # Set to 1 or 2 for training progress messages
     )
+
+    message("train_xgboost 2")
 
 
   }, error = function(e) {
@@ -1279,10 +1283,7 @@ train_xgboost <- function(prep_recipe, config) {
 #'
 #' @noRd
 #'
-#' @import xgboost
-#' @import recipes
-#' @import dplyr
-#' @import tibble
+#' @import xgboost recipes dplyr tibble
 forecast_xgboost <- function(model, prep_recipe, full_df, train_end_date, total_periods_needed, freq = "day") {
 
   if (is.null(model) || !inherits(model, "xgb.Booster")) {
@@ -1371,6 +1372,8 @@ forecast_xgboost <- function(model, prep_recipe, full_df, train_end_date, total_
     }
     future_matrix <- as.matrix(future_features_baked[, model_features, drop = FALSE]) # Select and order
 
+    message("forecast XGBoost 1")
+
 
     # 7. Predict
     predictions <- predict(model, future_matrix)
@@ -1381,6 +1384,8 @@ forecast_xgboost <- function(model, prep_recipe, full_df, train_end_date, total_
       ds = future_dates,
       yhat = as.numeric(predictions)
     )
+    ### revisar resultados
+    message("forecast XGBoost 2")
 
   }, error = function(e) {
     warning(paste("XGBoost forecast generation failed:", e$message))
@@ -1450,23 +1455,50 @@ train_gam <- function(train_df, config) {
     formula_str <- "y ~ s(time_index)" # Start with just smooth trend
 
     # --- Build Formula Dynamically ---
-    # formula_str <- "y ~ "
-    # Trend term
-    # if (config$smooth_trend) {
-    #   formula_str <- paste(formula_str, "s(time_index)")
-    # } else {
-    #   formula_str <- paste(formula_str, "time_index") # Linear trend
+    message("DEBUG: Building GAM formula...")
+    formula_str <- "y ~ "
+    # Trend term (keep selection logic)
+    if (config$smooth_trend) {
+      formula_str <- paste(formula_str, "s(time_index)")
+      message("  + Added smooth trend: s(time_index)")
+    } else {
+      formula_str <- paste(formula_str, "time_index")
+      message("  + Added linear trend: time_index")
+    }
+
+    if (config$use_season_y && length(unique(feature_df$yday)) > 1) {
+      # Calculate k, ensuring it's at least 3
+      k_yearly <- min(length(unique(feature_df$yday)) - 1, 10) # Default max k=10
+      if (k_yearly < 3) {
+        warning("Not enough unique yday values for yearly spline (k<3). Skipping.")
+      } else {
+        term_y <- paste0("s(yday, bs='cc', k=", k_yearly, ")")
+        formula_str <- paste(formula_str, "+", term_y)
+        message(paste("  + Added yearly seasonality:", term_y))
+      }
+    } else if (config$use_season_y) {
+      warning("Yearly seasonality requested but only 1 unique yday value found.")
+    }
+
+    # --- KEEP Weekly Seasonality Commented Out ---
+    # if (config$use_season_w && length(unique(feature_df$wday)) > 1) {
+    #      k_weekly <- min(length(unique(feature_df$wday)) - 1, 4); if (k_weekly < 3) k_weekly <- 3
+    #      if (k_weekly >= 3) { formula_str <- paste0(formula_str, " + s(wday, bs='cc', k=", k_weekly, ")") }
     # }
+    # --- END Weekly Seasonality ---
+
+    if (config$use_season_w && length(unique(feature_df$wday)) > 1) {
+      # Ensure wday factor exists from prepare_gam_features
+      if("wday" %in% names(feature_df) && is.factor(feature_df$wday)) {
+        term_w <- "wday" # Add the factor name directly
+        formula_str <- paste(formula_str, "+", term_w)
+        message(paste("  + Added weekly seasonality as factor:", term_w))
+      } else {
+        warning("Weekly seasonality requested but 'wday' factor not found or invalid in feature_df.")
+      }
+    }
+
     # # Seasonal terms (using cyclic cubic splines 'cc')
-    # # k = number of basis functions (adjust based on data complexity/length)
-    # if (config$use_season_y && length(unique(feature_df$yday)) > 1) { # Check if yday varies
-    #   # Check if enough unique days for default k (~10)
-    #   k_yearly <- min(length(unique(feature_df$yday)) - 1, 10)
-    #   if (k_yearly >= 3) { # Need at least k=3 for s()
-    #     formula_str <- paste0(formula_str, " + s(yday, bs='cc', k=", k_yearly, ")")
-    #     message(paste("Adding yearly seasonality: s(yday, k=", k_yearly, ")"))
-    #   } else { warning("Not enough unique yday values for yearly spline.") }
-    # }
     # if (config$use_season_w && length(unique(feature_df$wday)) > 1) { # Check if wday varies
     #   # Check if enough unique days for default k (~4)
     #   k_weekly <- min(length(unique(feature_df$wday)) - 1, 4)
@@ -1611,6 +1643,226 @@ forecast_gam <- function(model, train_df, total_periods_needed, freq_str = "day"
     warning(paste("GAM forecast generation failed:", conditionMessage(e)))
     fcst_df <<- NULL; fitted_vals <<- NULL
   })
+
+  return(list(forecast = fcst_df, fitted = fitted_vals))
+}
+#' Train Random Forest Model
+#'
+#' Trains a Random Forest model using the ranger package.
+#'
+#' @param prep_recipe A *prepared* recipe object from `create_tree_recipe`.
+#' @param config List containing RF hyperparameters: num_trees, mtry (0 for auto), min_node_size.
+#'
+#' @return A fitted ranger model object. Returns NULL on error.
+#' @noRd
+#' @import ranger recipes dplyr tibble # Ensure imports
+train_rf <- function(prep_recipe, config) {
+  # --- Input Validation ---
+  if (is.null(prep_recipe) || !inherits(prep_recipe, "recipe") || is.null(prep_recipe$steps)) {
+    warning("train_rf: Invalid or non-prepared recipe provided.")
+    return(NULL)
+  }
+  message("--- Entering train_rf ---")
+
+  model <- NULL
+  tryCatch({
+    # Extract processed training data
+    message("Juicing recipe for outcome (y)...")
+    train_y <- recipes::juice(prep_recipe, y) %>% dplyr::pull() # Use explicit 'y'
+    message("Baking recipe for predictors (X)...")
+    train_x_df <- recipes::bake(prep_recipe, new_data = NULL, has_role("predictor"))
+
+    # --- Dimension Checks ---
+    if(nrow(train_x_df) == 0 || ncol(train_x_df) == 0) stop("Baked predictor data has zero rows or columns.")
+    if(nrow(train_x_df) != length(train_y)) stop("Dimension mismatch between predictors and outcome.")
+    message(paste("Predictor dimensions:", paste(dim(train_x_df), collapse=" x ")))
+    # --- End Checks ---
+
+    # Combine into dataframe for ranger formula interface
+    train_data_rf <- dplyr::bind_cols(train_x_df, tibble::tibble(y = train_y))
+
+    # --- Determine Ranger Parameters ---
+    num_predictors <- ncol(train_x_df)
+    # Calculate default mtry (sqrt(p)) if user specified 0 or invalid
+    mtry_val <- config$rf_mtry
+    if (is.null(mtry_val) || is.na(mtry_val) || !is.numeric(mtry_val) || mtry_val < 1) {
+      mtry_val <- max(1, floor(sqrt(num_predictors))) # Ensure at least 1
+      message(paste("Using calculated mtry:", mtry_val))
+    } else {
+      mtry_val <- min(mtry_val, num_predictors) # Ensure mtry <= num_predictors
+      message(paste("Using user-specified mtry:", mtry_val))
+    }
+
+    num_trees_val <- config$rf_num_trees %||% 500 # Default 500 if NULL
+    min_node_size_val <- config$rf_min_node_size %||% 5 # Default 5 if NULL
+    # --- End Parameters ---
+
+    message("Starting ranger() training...")
+    model <- ranger::ranger(
+      formula = y ~ .,                 # Predict y using all other columns
+      data = train_data_rf,
+      num.trees = num_trees_val,
+      mtry = mtry_val,
+      min.node.size = min_node_size_val,
+      importance = 'impurity',        # Or 'permutation', or 'none'
+      num.threads = 1                  # Use 1 thread for safety in parallel Shiny
+      # seed = 123                     # Optional: for reproducibility
+    )
+    message("ranger() training finished.")
+
+  }, error = function(e) {
+    warning(paste("Random Forest model training failed inside train_rf:", conditionMessage(e)))
+    model <<- NULL
+  })
+  return(model)
+}
+
+
+#' Forecast using Random Forest Model
+#'
+#' Generates forecasts from a trained ranger model using a prepared recipe.
+#'
+#' @param model A fitted ranger model object.
+#' @param prep_recipe The *prepared* recipe used for training.
+#' @param full_df The original dataframe (post-cleaning/agg) for feature generation history.
+#' @param train_end_date The last date present in the training data.
+#' @param total_periods_needed Integer, TOTAL number of periods to forecast ahead.
+#' @param freq_str Character string frequency ('day', 'week').
+#'
+#' @return A list containing `$forecast` (tibble) and `$fitted` (vector). Returns NULL on error.
+#' @noRd
+#' @import ranger recipes dplyr tibble lubridate stats # Ensure imports
+forecast_rf <- function(model, prep_recipe, full_df, train_df,
+                        train_end_date, total_periods_needed, freq_str = "day") {
+  # Basic validation
+  if (is.null(model) || !inherits(model, "ranger")) { return(NULL) }
+  if (is.null(prep_recipe) || !inherits(prep_recipe, "recipe")) { return(NULL) }
+  if (!is.data.frame(train_df) || !all(c("ds", "y") %in% names(train_df))) { # Add validation for train_df
+    stop("forecast_rf requires valid train_df input.")
+  }
+  # ... other validation ...
+  message("--- Entering forecast_rf ---")
+
+  fcst_df <- NULL
+  fitted_vals <- NULL
+
+  tryCatch({
+    # --- Create Future Features (similar to forecast_xgboost) ---
+    message("Preparing future data features for RF forecast...")
+    max_lag_needed <- 0 # ... (calculate max_lag_needed from recipe) ...
+    if(nrow(full_df) < max_lag_needed) {
+      stop(paste("Need at least", max_lag_needed, "rows in full_df for forecast lags."))
+    }
+
+
+
+    by_period <- switch(freq_str, "week" = lubridate::weeks(1), lubridate::days(1))
+    start_forecast_date <- train_end_date + by_period
+    future_dates <- seq.Date(from = start_forecast_date, by = freq_str, length.out = total_periods_needed) # Generate future dates using train_end_date, freq_str, total_periods_needed
+    message(paste("Generated future_dates length:", length(future_dates)))
+    if(length(future_dates) != total_periods_needed) stop("Date sequence length mismatch!")
+
+    recent_data <- utils::tail(full_df, max_lag_needed)
+    future_template <- tibble::tibble(ds = future_dates, y = NA_real_)
+    combined_df <- dplyr::bind_rows(recent_data, future_template)
+
+    message("Baking combined data for RF...")
+    baked_combined <- recipes::bake(prep_recipe, new_data = combined_df, has_role("predictor")) # Use has_role
+    message(paste("Baked_combined dimensions:", paste(dim(baked_combined), collapse=" x ")))
+
+    message("Extracting future features...")
+    future_features_baked_df <- utils::tail(baked_combined, total_periods_needed) # This is a dataframe
+    message(paste("Extracted future_features_baked_df dimensions:", paste(dim(future_features_baked_df), collapse=" x ")))
+    if(nrow(future_features_baked_df) != total_periods_needed) stop("Baked feature rows do not match total periods needed.")
+    # --- End Feature Creation ---
+
+    # --- Predict ---
+    message("Predicting using ranger model...")
+    # Predict needs a data frame with same column names as training predictors
+    # Check names - bake should guarantee this if recipe is consistent
+    predictor_names <- model$forest$independent.variable.names
+    missing_cols <- setdiff(predictor_names, names(future_features_baked_df))
+    if(length(missing_cols) > 0) stop(paste("Missing predictor columns for forecast:", paste(missing_cols, collapse=", ")))
+
+    predictions_obj <- predict(model, data = future_features_baked_df[, predictor_names, drop = FALSE]) # Pass data frame
+    predictions <- predictions_obj$predictions # Extract prediction values
+    message(paste("Generated predictions length:", length(predictions)))
+    if (length(predictions) != total_periods_needed) stop("Predictions length different from total_periods_needed")
+    # --- End Predict ---
+
+    # --- Create Forecast Tibble ---
+    fcst_df <- tibble::tibble(
+      ds = future_dates,
+      yhat = as.numeric(predictions)
+      # RF doesn't naturally give CIs like ETS/ARIMA/GAM(se.fit)
+      # Could add yhat_lower/upper as NA or estimate via quantile regression forests later
+    )
+    message("RF forecast tibble created.")
+
+    # # --- Get Fitted Values ---
+    # message("Getting RF fitted values...")
+    # # Predict on original training features (baked)
+    # train_x_df <- recipes::bake(prep_recipe, new_data = NULL, has_role("predictor"))
+    # if(nrow(train_x_df) > 0){
+    #   fitted_preds_obj <- predict(model, data = train_x_df[, predictor_names, drop = FALSE])
+    #   fitted_vals <- fitted_preds_obj$predictions
+    #   message("RF fitted values obtained.")
+    # } else {
+    #   warning("Could not bake training predictors for fitted values.")
+    #   fitted_vals <- NULL
+    # }
+    # # --- End Fitted Values ---
+    # --- Get Fitted Values (Corrected) ---
+    message("Getting RF fitted values on training data...")
+    fitted_vals <- NULL # Initialize
+
+    # --- BAKE USING train_df as new_data ---
+    train_predictors_baked_df <- recipes::bake(
+      prep_recipe,
+      new_data = train_df, # Apply recipe to train_df
+      has_role("predictor")
+    )
+    message(paste("Baked training predictors. Dimensions:", paste(dim(train_predictors_baked_df), collapse=" x ")))
+    # --- End Bake ---
+
+    # Check if baked result matches train_df rows
+    if(nrow(train_predictors_baked_df) == nrow(train_df)){
+      predictor_names <- model$forest$independent.variable.names
+      missing_cols <- setdiff(predictor_names, names(train_predictors_baked_df))
+      if(length(missing_cols) > 0) {
+        stop(paste("Training data missing model features after baking:", paste(missing_cols, collapse=", ")))
+      }
+
+      # Predict on the baked training predictors
+      fitted_preds_obj <- predict(model, data = train_predictors_baked_df[, predictor_names, drop = FALSE])
+      fitted_vals <- fitted_preds_obj$predictions
+      message("RF fitted values obtained.")
+      # Final check
+      if(length(fitted_vals) != nrow(train_df)){
+        warning("Fitted values length still does not match training data rows after prediction!")
+        fitted_vals <- NULL
+      }
+
+    } else {
+      warning("Baked training predictors row count does not match original train_df rows. Cannot get fitted values.")
+      # This could happen if recipe steps remove rows (e.g., NA imputation wasn't perfect, or filters)
+    }
+    # --- End Fitted Values ---
+
+  }, error = function(e) {
+    warning(paste("Random Forest forecast generation failed:", conditionMessage(e)))
+    fcst_df <<- NULL; fitted_vals <<- NULL
+  })
+
+  # --- ADD DEBUG LOGGING BEFORE RETURN ---
+  message("--- forecast_rf: Final checks before returning ---")
+  message(paste("  Forecast df is NULL:", is.null(fcst_df)))
+  if(!is.null(fcst_df)) message(paste("  Forecast df rows:", nrow(fcst_df)))
+  message(paste("  Fitted values (fitted_vals) is NULL:", is.null(fitted_vals)))
+  if(!is.null(fitted_vals)) message(paste("  Fitted values length:", length(fitted_vals)))
+  if(!is.null(fitted_vals)) message(paste("  Any NAs in fitted values?", anyNA(fitted_vals)))
+  message("-------------------------------------------------")
+  # --- END DEBUG ---
 
   return(list(forecast = fcst_df, fitted = fitted_vals))
 }

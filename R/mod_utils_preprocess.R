@@ -23,7 +23,7 @@
 #' @importFrom lubridate wday mday yday week month year
 #' @importFrom rlang !! sym
 # Add !! for injection, ensure sym is still there if needed elsewhere
-create_xgb_recipe <- function(df, date_col = 'ds', value_col = 'y', max_lag = 7, window_sizes = c(7, 14), freq_str = "day") {
+create_tree_recipe <- function(df, date_col = 'ds', value_col = 'y', max_lag = 7, window_sizes = c(7, 14), freq_str = "day") {
   internal_value_col <- "y"
 
   if (value_col != "y") {
@@ -116,7 +116,7 @@ create_xgb_recipe <- function(df, date_col = 'ds', value_col = 'y', max_lag = 7,
     recipes::prep(xgb_recipe, training = df_renamed)
   }, error = function(e) {
     # Provide more context in warning
-    warning(paste("Recipe preparation failed in create_xgb_recipe:", conditionMessage(e)))
+    warning(paste("Recipe preparation failed in create_tree_recipe:", conditionMessage(e)))
     return(NULL)
   })
   return(prepared_recipe)
