@@ -18,6 +18,7 @@
 #' @importFrom lubridate year yday weeks
 #' @importFrom rlang %||%
 train_arima <- function(train_df, config, aggregation_level) {
+  message("Starting train_arima")
   # Basic validation
   if (!is.data.frame(train_df) || !all(c("ds", "y") %in% names(train_df))) {
     stop("train_df must be a dataframe with 'ds' and 'y' columns.")
@@ -114,6 +115,7 @@ train_arima <- function(train_df, config, aggregation_level) {
   })
 
   if(is.null(y_ts)) return(NULL)
+ message("TS object created successfully.")
   message(paste("Created ts object with frequency:", stats::frequency(y_ts))) # Log actual ts frequency
 
   model <- NULL
@@ -124,6 +126,7 @@ train_arima <- function(train_df, config, aggregation_level) {
                                     # Add other auto.arima args if desired
                                     stepwise = TRUE, approximation = TRUE, trace = FALSE )
       message("auto.arima finished.")
+      message("ARIMA model fitted successfully.") # Added success message
     } else {
       # Use determined freq as period for manual seasonal
       seasonal_list <- if(config$seasonal) list(order = c(config$P, config$D, config$Q), period = freq) else FALSE
@@ -131,6 +134,7 @@ train_arima <- function(train_df, config, aggregation_level) {
                                order = c(config$p, config$d, config$q),
                                seasonal = seasonal_list)
       message("Manual Arima finished.")
+      message("ARIMA model fitted successfully.") # Added success message
     }
   # tryCatch({
   #   if (config$auto) {
@@ -155,6 +159,7 @@ train_arima <- function(train_df, config, aggregation_level) {
     model <<- NULL # Assign NULL to the outer scope model variable
   })
 
+  message("Finished train_arima")
   return(model)
 }
 
@@ -177,6 +182,7 @@ train_arima <- function(train_df, config, aggregation_level) {
 #' @importFrom stats time frequency cycle
 forecast_arima <- function(model, total_periods_needed, train_end_date, freq_str = "day") {
   if (is.null(model) || !inherits(model, c("ARIMA", "forecast_ARIMA"))) {
+    message("Starting forecast_arima - Invalid model")
     warning("Invalid ARIMA model object provided. Returning NULL.")
     return(NULL)
   }
@@ -185,6 +191,7 @@ forecast_arima <- function(model, total_periods_needed, train_end_date, freq_str
     return(NULL)
   }
 
+  message("Starting forecast_arima")
   fcst <- NULL
   tryCatch({
     fcst <- forecast::forecast(model, h = total_periods_needed, level = c(80, 95))
@@ -193,7 +200,10 @@ forecast_arima <- function(model, total_periods_needed, train_end_date, freq_str
     fcst <<- NULL
   })
 
-  if(is.null(fcst)) return(NULL)
+  if(is.null(fcst)) {
+    warning("ARIMA forecast generation failed, fcst object is NULL.") # Added warning
+    return(NULL)
+  }
 
   # Convert forecast object to a tibble
   fcst_df <- tryCatch({
@@ -233,10 +243,16 @@ forecast_arima <- function(model, total_periods_needed, train_end_date, freq_str
 
   # return(fcst_df)
   # Also return fitted values for convenience in server logic
+  message(paste("forecast_arima: About to call stats::fitted() on object of class:", class(fcst))) # Added message
   # Note: The original forecast object `fcst` is needed for this
+  fitted_vals <- stats::fitted(fcst)
+  message(paste("forecast_arima: Length of fitted values:", length(fitted_vals))) # Added message
+  message(paste("forecast_arima: Any NAs in fitted values?", anyNA(fitted_vals))) # Added message
+
+  message("Finished forecast_arima")
   return(list(
     forecast = fcst_df,
-    fitted = stats::fitted(fcst) # Use stats::fitted on forecast object
+    fitted = fitted_vals # Use stats::fitted on forecast object
   ))
 }
 
@@ -254,6 +270,7 @@ forecast_arima <- function(model, total_periods_needed, train_end_date, freq_str
 #' @noRd
 #' @import forecast dplyr lubridate stats
 train_ets <- function(train_df, config, aggregation_level, total_periods_needed) { # config currently unused
+  message("Starting train_ets")
   # Basic validation
   if (!is.data.frame(train_df) || !all(c("ds", "y") %in% names(train_df))) {
     stop("train_df must be a dataframe with 'ds' and 'y' columns.")
@@ -361,6 +378,7 @@ train_ets <- function(train_df, config, aggregation_level, total_periods_needed)
   })
 
   if(is.null(y_ts)) return(NULL)
+  message("TS object created successfully.") # Added message
   message(paste("Created ts object with frequency:", stats::frequency(y_ts))) # Log actual frequency
 
   # --- Determine ETS Arguments ---
@@ -441,6 +459,7 @@ train_ets <- function(train_df, config, aggregation_level, total_periods_needed)
       if(!is.null(model_or_fcst$model$method)){
         message("Underlying ETS model fitted by stlf: ", model_or_fcst$model$method)
         }
+      message("ETS model fitted successfully.") # Added success message
 
 
 
@@ -491,6 +510,7 @@ train_ets <- function(train_df, config, aggregation_level, total_periods_needed)
       message("Arguments for direct ets() call:"); print(str(ets_call_args))
       model_or_fcst <- do.call(forecast::ets, args = ets_call_args)
       message("ets() finished. Final model: ", model_or_fcst$method)
+      message("ETS model fitted successfully.") # Added success message
 
     }
     # --- End Choose method ---
@@ -500,6 +520,7 @@ train_ets <- function(train_df, config, aggregation_level, total_periods_needed)
     model_or_fcst <<- NULL
   })
 
+  message("Finished train_ets")
   return(model_or_fcst) # Return either ets model or forecast object from stlf
 
   # model <- NULL
@@ -693,6 +714,7 @@ train_ets <- function(train_df, config, aggregation_level, total_periods_needed)
 #' @noRd
 #' @import forecast dplyr tibble lubridate stats
 forecast_ets <- function(model_or_fcst, total_periods_needed, train_end_date, freq_str = "day") {
+  message("Starting forecast_ets")
   # Check if model is ets OR stlm
   # if (is.null(model) || (!inherits(model, "ets") && !inherits(model, "stlm"))) {
   #   warning("Invalid ETS/STLM model object provided. Returning NULL.")
@@ -705,6 +727,7 @@ forecast_ets <- function(model_or_fcst, total_periods_needed, train_end_date, fr
   # }
   # Check input object type
   if (is.null(model_or_fcst)) {
+    message("Starting forecast_ets - Invalid model/forecast object (NULL)") # Added message
     warning("Invalid model/forecast object provided (NULL).")
     return(NULL)
   }
@@ -713,6 +736,7 @@ forecast_ets <- function(model_or_fcst, total_periods_needed, train_end_date, fr
   is_stlf_fcst <- inherits(model_or_fcst, "forecast") # stlf returns this class
 
   if (!is_ets_model && !is_stlf_fcst) {
+    message("Starting forecast_ets - Invalid object class") # Added message
     warning("Input object is not class 'ets' or 'forecast' (from stlf).")
     return(NULL)
   }
@@ -723,6 +747,8 @@ forecast_ets <- function(model_or_fcst, total_periods_needed, train_end_date, fr
   if (!is.Date(train_end_date)) {
     warning("Invalid train_end_date provided. Returning NULL.")
     return(NULL)
+  }
+  message(paste("Input object class:", class(model_or_fcst))) # Added message
   }
 
   fcst <- NULL
@@ -784,6 +810,7 @@ forecast_ets <- function(model_or_fcst, total_periods_needed, train_end_date, fr
   #   forecast = fcst_df,
   #   fitted = fitted_vals # Fitted values from the forecast object
   # ))
+  # ))
   tryCatch({
     if (is_ets_model) {
       # Forecast the ETS model if that's what we have
@@ -812,6 +839,7 @@ forecast_ets <- function(model_or_fcst, total_periods_needed, train_end_date, fr
     }
 
     if(is.null(fcst)) stop("Forecast object generation failed.")
+    message(paste("forecast_ets: About to call stats::fitted() on object of class:", class(fcst))) # Added message
 
     # Extract fitted values (works for both forecast objects from ets/stlf)
     fitted_vals <- stats::fitted(fcst)
@@ -840,6 +868,11 @@ forecast_ets <- function(model_or_fcst, total_periods_needed, train_end_date, fr
     fcst_df <<- NULL; fitted_vals <<- NULL # Reset on error
   })
 
+  message(paste("forecast_ets: Length of fitted values:", length(fitted_vals))) # Added message
+  message(paste("forecast_ets: Any NAs in fitted values?", anyNA(fitted_vals))) # Added message
+
+  message("Finished forecast_ets")
+
   # Return list
   return(list(forecast = fcst_df, fitted = fitted_vals))
 }
@@ -857,6 +890,7 @@ forecast_ets <- function(model_or_fcst, total_periods_needed, train_end_date, fr
 #' @noRd
 #' @import forecast dplyr lubridate stats
 train_tbats <- function(train_df, config, aggregation_level) { # config currently unused
+  message("Starting train_tbats")
   # Basic validation
   if (!is.data.frame(train_df) || !all(c("ds", "y") %in% names(train_df))) {
     stop("train_df must be a dataframe with 'ds' and 'y' columns.")
@@ -912,19 +946,27 @@ train_tbats <- function(train_df, config, aggregation_level) { # config currentl
       return(NULL) # Return NULL if ts creation fails
     })
   if(is.null(y_ts)) return(NULL)
+ message("TS object created successfully.") # Added message
   message(paste("Created ts object with frequency:", stats::frequency(y_ts)))
 
   # --- Train TBATS ---
   model <- NULL
   tryCatch({
-    message("Calling forecast::tbats()...")
+ message("Calling forecast::tbats() for training...") # Updated message
     # Using default arguments for automatic detection:
     # use.box.cox=NULL, use.trend=NULL, use.damped.trend=NULL,
+ # use.parallel=TRUE, # Set to TRUE in call below
     # seasonal.periods=NULL (auto-detect based on ts frequency & data)
-    model <- forecast::tbats(y_ts,
+ model <- tryCatch({
+      forecast::tbats(y_ts,
                              use.parallel = TRUE) # Enable parallel if multiple cores available
+    }, error = function(e) {
+ warning(paste("Inner tbats() call failed:", conditionMessage(e)))
+      return(NULL) # Return NULL from inner tryCatch
+    })
 
     message("tbats() finished.")
+ message("TBATS model fitted successfully.") # Added success message
     # You can print details of the fitted model components if needed:
     # print(model)
 
@@ -933,6 +975,7 @@ train_tbats <- function(train_df, config, aggregation_level) { # config currentl
     model <<- NULL
   })
 
+  message("Finished train_tbats")
   return(model)
   }
 
@@ -951,9 +994,13 @@ train_tbats <- function(train_df, config, aggregation_level) { # config currentl
 #' @import forecast dplyr tibble lubridate stats
 forecast_tbats <- function(model, total_periods_needed, train_end_date, freq_str = "day") {
   # Basic validation
+  message("Starting forecast_tbats")
   if (is.null(model) || !inherits(model, "tbats")) {
+    message("Starting forecast_tbats - Invalid model (NULL or wrong class)") # Added message
     warning("Invalid TBATS model object provided. Returning NULL.")
     return(NULL)
+  } else {
+    message(paste("Input object class:", class(model))) # Added message
   }
   # ... rest of validation (periods_needed, train_end_date)...
 
@@ -971,9 +1018,13 @@ forecast_tbats <- function(model, total_periods_needed, train_end_date, freq_str
   fitted_vals <- NULL
   fcst_df <- NULL
 
+  if (is.null(model)) { # Double check after initial validation
+    warning("Model is NULL inside forecast_tbats tryCatch.")
+    return(NULL)
+  }
+
   tryCatch({
     message("Calling forecast() on TBATS object...")
-    fcst <- forecast::forecast(model, h = total_periods_needed, level = c(80, 95))
     fitted_vals <- stats::fitted(fcst) # Fitted values from forecast object
     message("forecast.tbats() finished.")
   }, error = function(e) {
@@ -981,7 +1032,11 @@ forecast_tbats <- function(model, total_periods_needed, train_end_date, freq_str
     fcst <<- NULL; fitted_vals <<- NULL
   })
 
-  if(is.null(fcst)) return(NULL)
+  if(is.null(fcst)) {
+    warning("TBATS forecast generation failed, fcst object is NULL.") # Added warning
+    return(NULL)
+  }
+  message(paste("forecast_tbats: About to call stats::fitted() on object of class:", class(fcst))) # Added message
 
   # Convert forecast object to tibble with dates
   tryCatch({
@@ -1008,7 +1063,11 @@ forecast_tbats <- function(model, total_periods_needed, train_end_date, freq_str
     fcst_df <<- NULL; fitted_vals <<- NULL # Reset on error
   })
 
+  message(paste("forecast_tbats: Length of fitted values:", length(fitted_vals))) # Added message
+  message(paste("forecast_tbats: Any NAs in fitted values?", anyNA(fitted_vals))) # Added message
+
   # Return list
+  message("Finished forecast_tbats")
   return(list(forecast = fcst_df, fitted = fitted_vals))
 }
 
@@ -1452,9 +1511,9 @@ train_gam <- function(train_df, config) {
     # --- Build Formula Dynamically ---
     # --- TEMPORARILY SIMPLIFY FORMULA FOR DEBUGGING ---
     message("DEBUG: Trying simplest formula: y ~ s(time_index)")
-    formula_str <- "y ~ s(time_index)" # Start with just smooth trend
-
     # --- Build Formula Dynamically ---
+
+
     message("DEBUG: Building GAM formula...")
     formula_str <- "y ~ "
     # Trend term (keep selection logic)
@@ -1468,7 +1527,8 @@ train_gam <- function(train_df, config) {
 
     if (config$use_season_y && length(unique(feature_df$yday)) > 1) {
       # Calculate k, ensuring it's at least 3
-      k_yearly <- min(length(unique(feature_df$yday)) - 1, 10) # Default max k=10
+      # Choose k based on typical yearly seasonality, e.g., 10-20. Ensure k < num unique days - 1
+      k_yearly <- min(length(unique(feature_df$yday)) - 1, 15) # Let's try k=15 as a starting point
       if (k_yearly < 3) {
         warning("Not enough unique yday values for yearly spline (k<3). Skipping.")
       } else {
@@ -1657,6 +1717,7 @@ forecast_gam <- function(model, train_df, total_periods_needed, freq_str = "day"
 #' @noRd
 #' @import ranger recipes dplyr tibble # Ensure imports
 train_rf <- function(prep_recipe, config) {
+  message("Starting train_rf")
   # --- Input Validation ---
   if (is.null(prep_recipe) || !inherits(prep_recipe, "recipe") || is.null(prep_recipe$steps)) {
     warning("train_rf: Invalid or non-prepared recipe provided.")
@@ -1714,6 +1775,7 @@ train_rf <- function(prep_recipe, config) {
     warning(paste("Random Forest model training failed inside train_rf:", conditionMessage(e)))
     model <<- NULL
   })
+  message("Finished train_rf")
   return(model)
 }
 
@@ -1734,6 +1796,7 @@ train_rf <- function(prep_recipe, config) {
 #' @import ranger recipes dplyr tibble lubridate stats # Ensure imports
 forecast_rf <- function(model, prep_recipe, full_df, train_df,
                         train_end_date, total_periods_needed, freq_str = "day") {
+  message("Starting forecast_rf")
   # Basic validation
   if (is.null(model) || !inherits(model, "ranger")) { return(NULL) }
   if (is.null(prep_recipe) || !inherits(prep_recipe, "recipe")) { return(NULL) }
@@ -1741,7 +1804,10 @@ forecast_rf <- function(model, prep_recipe, full_df, train_df,
     stop("forecast_rf requires valid train_df input.")
   }
   # ... other validation ...
-  message("--- Entering forecast_rf ---")
+  if (is.null(model)) { # Double check after initial validation
+    warning("Model is NULL inside forecast_rf tryCatch.")
+    return(NULL)
+  }
 
   fcst_df <- NULL
   fitted_vals <- NULL
@@ -1791,6 +1857,7 @@ forecast_rf <- function(model, prep_recipe, full_df, train_df,
     # --- End Predict ---
 
     # --- Create Forecast Tibble ---
+    message("Creating RF forecast tibble...")
     fcst_df <- tibble::tibble(
       ds = future_dates,
       yhat = as.numeric(predictions)
@@ -1862,7 +1929,7 @@ forecast_rf <- function(model, prep_recipe, full_df, train_df,
   if(!is.null(fitted_vals)) message(paste("  Fitted values length:", length(fitted_vals)))
   if(!is.null(fitted_vals)) message(paste("  Any NAs in fitted values?", anyNA(fitted_vals)))
   message("-------------------------------------------------")
-  # --- END DEBUG ---
+  message("Finished forecast_rf")
 
   return(list(forecast = fcst_df, fitted = fitted_vals))
 }
