@@ -749,7 +749,7 @@ forecast_ets <- function(model_or_fcst, total_periods_needed, train_end_date, fr
     return(NULL)
   }
   message(paste("Input object class:", class(model_or_fcst))) # Added message
-  }
+  
 
   fcst <- NULL
   fitted_vals <- NULL

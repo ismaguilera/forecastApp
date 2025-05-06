@@ -619,6 +619,14 @@ app_server <- function(input, output, session) {
       for (model_name in successful_models) {
         message(paste("Calculating metrics for:", model_name))
         fitted_values <- r$fitted_list[[model_name]]
+
+        # --- DEBUG Metrics Check (ADD) ---
+        message(paste0("DEBUG Metrics: Checking model: ", model_name))
+        message(paste0("DEBUG Metrics: Length of fitted_values: ", length(fitted_values)))
+        message(paste0("DEBUG Metrics: Length of train_actual: ", length(train_actual)))
+        message(paste0("DEBUG Metrics: Any NAs in fitted_values? ", anyNA(fitted_values)))
+        message(paste0("DEBUG Metrics: Class of fitted_values: ", class(fitted_values)))
+        # --- End DEBUG Metrics Check ---
         forecast_tibble <- r$forecast_list[[model_name]]
         model_metrics <- list() # Store train/test for THIS model
 
@@ -671,6 +679,17 @@ app_server <- function(input, output, session) {
       r$run_models_summary <- temp_summary_list # Update main reactive value
 
       # --- ADD DEBUG: Print final summary structure ---
+      # --- DEBUG Plotting Check (ADD) ---
+      message("DEBUG Plotting: Checking reactive values before incrementing r$run_id")
+      message("DEBUG Plotting: Names in r$forecast_list:")
+      print(names(r$forecast_list))
+      message("DEBUG Plotting: Structure of r$forecast_list[["ARIMA"]]:")
+      print(str(r$forecast_list[["ARIMA"]]))
+      message("DEBUG Plotting: Structure of r$forecast_list[["ETS"]]:")
+      print(str(r$forecast_list[["ETS"]]))
+      message("DEBUG Plotting: Structure of r$fitted_list[["ARIMA"]]:")
+      print(str(r$fitted_list[["ARIMA"]]))
+      message("DEBUG Plotting: Structure of r$fitted_list[["ETS"]]:")
       message("--- Final r$run_models_summary structure ---")
       print(str(r$run_models_summary))
       message("--- End final summary structure ---")
