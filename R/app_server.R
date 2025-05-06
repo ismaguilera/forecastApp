@@ -565,10 +565,6 @@ app_server <- function(input, output, session) {
             warning(paste("Error running model", model_name, ":", conditionMessage(e)))
             shiny::showNotification(paste("Failed to run:", model_name), type="warning")
             # Do not stop the loop, just skip storing results for this model
-            r$run_id = 0 # Trigger for plot update
-
-            r$forecast_list = list() # Store list of forecast tibbles
-            r$fitted_list = list() # Store list of fitted value vectors
             r$metrics_list = list() # Store list of metric tibbles (for later)
             r$model_summary_list = list() # Store list of model summary info (for later)
 
