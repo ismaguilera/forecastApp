@@ -910,16 +910,14 @@ train_tbats <- function(train_df, config, aggregation_level) { # config currentl
   seasonal_periods_hint <- NULL
   if (aggregation_level == "Daily") {
     freq <- 7
-    # For daily, might have weekly AND yearly. Pass both as hints? Or just primary?
-    # Let's pass main freq for ts object, NULL for seasonal.periods to let tbats auto-detect.
-    # seasonal_periods_hint <- c(7, 365.25) # Optional hint
-    message("TBATS: Setting ts frequency=7 for daily data.")
+    seasonal_periods_hint <- c(7, 365.25) # Hint for weekly and yearly seasonality
+    message("TBATS: Setting ts frequency=7 for daily data. Hinting seasonal_periods: c(7, 365.25)")
   } else if (aggregation_level == "Weekly") {
     freq <- 52
-    # seasonal_periods_hint <- c(365.25 / 7) # Optional hint
-    message("TBATS: Setting ts frequency=52 for weekly data.")
+    seasonal_periods_hint <- c(365.25 / 7) # Hint for yearly seasonality
+    message("TBATS: Setting ts frequency=52 for weekly data. Hinting seasonal_periods: c(52.17857)")
   } else {
-    message("TBATS: Frequency=1 (non-seasonal or unknown aggregation).")
+    message("TBATS: Frequency=1 (non-seasonal or unknown aggregation). seasonal_periods_hint remains NULL.")
   }
   # --- End Frequency Determination ---
 
@@ -957,21 +955,38 @@ train_tbats <- function(train_df, config, aggregation_level) { # config currentl
     # use.box.cox=NULL, use.trend=NULL, use.damped.trend=NULL,
  # use.parallel=TRUE, # Set to TRUE in call below
     # seasonal.periods=NULL (auto-detect based on ts frequency & data)
- model <- tryCatch({
-      forecast::tbats(y_ts,
-                             use.parallel = TRUE) # Enable parallel if multiple cores available
+    # Pass seasonal_periods_hint if not NULL
+    tbats_args <- list(y = y_ts, use.parallel = TRUE)
+    if (!is.null(seasonal_periods_hint)) {
+      tbats_args$seasonal.periods <- seasonal_periods_hint
+    }
+    message("Arguments for tbats():")
+    print(str(tbats_args))
+
+    model <- tryCatch({
+      do.call(forecast::tbats, args = tbats_args)
     }, error = function(e) {
- warning(paste("Inner tbats() call failed:", conditionMessage(e)))
+      warning_message <- paste(
+        "Inner tbats() call failed. Error: ", conditionMessage(e),
+        "\n  Data rows: ", nrow(train_df),
+        ", TS Freq: ", stats::frequency(y_ts),
+        ", Seasonal Hint: ", if (is.null(seasonal_periods_hint)) "NULL" else paste(seasonal_periods_hint, collapse=", ")
+      )
+      warning(warning_message)
       return(NULL) # Return NULL from inner tryCatch
     })
 
-    message("tbats() finished.")
- message("TBATS model fitted successfully.") # Added success message
-    # You can print details of the fitted model components if needed:
-    # print(model)
+    if (is.null(model)) {
+      message("tbats() returned NULL. Model fitting failed.")
+    } else {
+      message("tbats() finished.")
+      message("TBATS model fitted successfully.") # Added success message
+      # You can print details of the fitted model components if needed:
+      # print(model)
+    }
 
-  }, error = function(e) {
-    warning(paste("TBATS model training failed:", conditionMessage(e)))
+  }, error = function(e) { # Outer tryCatch, should ideally not be hit if inner one catches
+    warning(paste("Outer TBATS model training tryCatch failed:", conditionMessage(e)))
     model <<- NULL
   })
 
@@ -1509,11 +1524,6 @@ train_gam <- function(train_df, config) {
     # --- END DEBUG -
 
     # --- Build Formula Dynamically ---
-    # --- TEMPORARILY SIMPLIFY FORMULA FOR DEBUGGING ---
-    message("DEBUG: Trying simplest formula: y ~ s(time_index)")
-    # --- Build Formula Dynamically ---
-
-
     message("DEBUG: Building GAM formula...")
     formula_str <- "y ~ "
     # Trend term (keep selection logic)
@@ -1527,8 +1537,8 @@ train_gam <- function(train_df, config) {
 
     if (config$use_season_y && length(unique(feature_df$yday)) > 1) {
       # Calculate k, ensuring it's at least 3
-      # Choose k based on typical yearly seasonality, e.g., 10-20. Ensure k < num unique days - 1
-      k_yearly <- min(length(unique(feature_df$yday)) - 1, 15) # Let's try k=15 as a starting point
+      # Ensure k < num unique days - 1
+      k_yearly <- min(length(unique(feature_df$yday)) - 1, 10) # Use k=10 as specified
       if (k_yearly < 3) {
         warning("Not enough unique yday values for yearly spline (k<3). Skipping.")
       } else {
