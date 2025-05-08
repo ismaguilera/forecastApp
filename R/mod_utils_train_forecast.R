@@ -978,6 +978,9 @@ train_tbats <- function(train_df, config, aggregation_level) { # config currentl
 
     if (is.null(model)) {
       message("tbats() returned NULL. Model fitting failed.")
+    } else if (!inherits(model, "tbats")) {
+      warning("TBATS: forecast::tbats() returned an invalid object (not class 'tbats'). Model fitting failed.")
+      model <- NULL # Ensure model is NULL if not a valid tbats object
     } else {
       message("tbats() finished.")
       message("TBATS model fitted successfully.") # Added success message
@@ -1439,6 +1442,13 @@ forecast_xgboost <- function(model, prep_recipe, full_df, train_end_date, total_
     # 6. Convert to matrix (ensure same column order as training)
     # Get feature names from the booster object (safer)
     model_features <- model$feature_names
+    message("--- XGBoost Forecast: Debug ---")
+    message("Names of baked future features (future_features_baked):")
+    print(names(future_features_baked))
+    message("Feature names from trained XGBoost model (model$feature_names):")
+    print(model_features)
+    message("--- End XGBoost Forecast: Debug ---")
+
     # Ensure baked features have all model features (might need imputation if bake drops some?)
     missing_cols <- setdiff(model_features, names(future_features_baked))
     if (length(missing_cols) > 0) {
