@@ -58,54 +58,56 @@ create_tree_recipe <- function(df, date_col = 'ds', value_col = 'y', max_lag = 7
     timetk::step_timeseries_signature(ds) %>% # Date features
     recipes::step_rm(matches("(iso$)|(xts$)|(hour)|(min)|(sec)|(am.pm)|(qday)|(mday)|(mday7)|(mweek)|(day)")) %>%
     recipes::step_normalize(matches("(index.num)|(year)|(yday)")) %>% # Normalizar algunas características numéricas
-    recipes::step_mutate_at(matches("(_wday)|(_lbl)"), fn = as.factor) %>%
+    recipes::step_mutate_at(matches("(_wday)|(_lbl)"), fn = as.factor) %>% # Keep factors
 
-    # --- Add Fourier Terms for Seasonality ---
-    # Determine periods based on frequency
-    {
-      if(freq_str == "day") {
-        # For daily: Weekly and Yearly seasonality
-        # K = number of sine/cosine pairs, e.g., K=2 for weekly, K=5 for yearly
-        timetk::step_fourier(., ds, period = 7, K = 2) %>%
-          timetk::step_fourier(., ds, period = 365.25, K = 5)
-      } else if (freq_str == "week") {
-        # For weekly: Yearly seasonality (approx 52.18 weeks/year)
-        timetk::step_fourier(., ds, period = 365.25 / 7, K = 3)
-      } else {
-        . # Pass through if freq unknown
-      }
-    } %>%
+    # --- Temporarily Commented Out Fourier Terms ---
+    # # Determine periods based on frequency
+    # {
+    #   if(freq_str == "day") {
+    #     # For daily: Weekly and Yearly seasonality
+    #     # K = number of sine/cosine pairs, e.g., K=2 for weekly, K=5 for yearly
+    #     timetk::step_fourier(., ds, period = 7, K = 2) %>%
+    #       timetk::step_fourier(., ds, period = 365.25, K = 5)
+    #   } else if (freq_str == "week") {
+    #     # For weekly: Yearly seasonality (approx 52.18 weeks/year)
+    #     timetk::step_fourier(., ds, period = 365.25 / 7, K = 3)
+    #   } else {
+    #     . # Pass through if freq unknown
+    #   }
+    # } %>%
     # --- End Fourier Terms ---
-    # 1. Create Lags
+
+    # 1. Create Lags (Keep)
     recipes::step_lag( {{internal_value_col}} , lag = 1:max_lag) %>%
     # recipes::step_lag(y, lag = 1:28) %>%
     recipes::step_naomit(starts_with("lag_"), skip = TRUE) %>% # skip=TRUE if you want it optional
 
-    # 2. Apply Rolling Window Features to Lags
-    { # Rolling Mean
-      if (!!max_window > 0) {
-        recipes::step_mutate(.,
-                             across(all_of(lag_cols_names_actual),
-                                    ~ slider::slide_dbl(.x, mean, na.rm = TRUE, .before = !!max_window - 1, .complete = FALSE),
-                                    .names = paste0("roll_mean_", !!max_window, "_{.col}")
-                             )
-        )
-      } else { . }
-    } %>%
-    { # Rolling Std Dev
-      if (!!max_window > 0) {
-        recipes::step_mutate(.,
-                             across(all_of(lag_cols_names_actual),
-                                    ~ slider::slide_dbl(.x, sd, na.rm = TRUE, .before = !!max_window - 1, .complete = FALSE),
-                                    .names = paste0("roll_sd_", !!max_window, "_{.col}")
-                             )
-        )
-      } else { . }
-    } %>%
+    # --- Temporarily Commented Out Rolling Window Features ---
+    # # 2. Apply Rolling Window Features to Lags
+    # { # Rolling Mean
+    #   if (!!max_window > 0) {
+    #     recipes::step_mutate(.,
+    #                          across(all_of(lag_cols_names_actual),
+    #                                 ~ slider::slide_dbl(.x, mean, na.rm = TRUE, .before = !!max_window - 1, .complete = FALSE),
+    #                                 .names = paste0("roll_mean_", !!max_window, "_{.col}")
+    #                          )
+    #     )
+    #   } else { . }
+    # } %>%
+    # { # Rolling Std Dev
+    #   if (!!max_window > 0) {
+    #     recipes::step_mutate(.,
+    #                          across(all_of(lag_cols_names_actual),
+    #                                 ~ slider::slide_dbl(.x, sd, na.rm = TRUE, .before = !!max_window - 1, .complete = FALSE),
+    #                                 .names = paste0("roll_sd_", !!max_window, "_{.col}")
+    #                          )
+    #     )
+    #   } else { . }
+    # } %>%
     # --- End Rolling Window ---
 
     recipes::step_rm(ds) %>% # Remove original date column AFTER feature extraction
-    recipes::step_impute_mean(all_predictors(), -all_nominal_predictors()) %>% # Impute numerics
+    recipes::step_impute_mean(all_predictors(), -all_nominal_predictors()) %>% # Impute numerics (Keep)
     recipes::step_zv(all_predictors()) %>% # Remove zero-variance (inc single-level factors) BEFORE dummy
     recipes::step_dummy(all_nominal_predictors(), one_hot = TRUE) %>% # Create dummies
     recipes::step_normalize(all_numeric_predictors(), -all_outcomes())  %>%

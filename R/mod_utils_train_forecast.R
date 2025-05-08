@@ -910,8 +910,14 @@ train_tbats <- function(train_df, config, aggregation_level) { # config currentl
   seasonal_periods_hint <- NULL
   if (aggregation_level == "Daily") {
     freq <- 7
-    seasonal_periods_hint <- c(7, 365.25) # Hint for weekly and yearly seasonality
-    message("TBATS: Setting ts frequency=7 for daily data. Hinting seasonal_periods: c(7, 365.25)")
+    # Only hint yearly seasonality if enough data (e.g., > 2 years)
+    if (nrow(train_df) > 2 * 365) {
+      seasonal_periods_hint <- c(7, 365.25) # Hint for weekly and yearly seasonality
+      message("TBATS: Setting ts frequency=7 for daily data. Hinting seasonal_periods: c(7, 365.25)")
+    } else {
+      seasonal_periods_hint <- c(7) # Only hint weekly
+      message("TBATS: Setting ts frequency=7 for daily data (short series). Hinting seasonal_periods: c(7)")
+    }
   } else if (aggregation_level == "Weekly") {
     freq <- 52
     seasonal_periods_hint <- c(365.25 / 7) # Hint for yearly seasonality
@@ -1343,7 +1349,35 @@ train_xgboost <- function(prep_recipe, config) {
       stop("xgb.train failed or returned NULL.") # Stop execution if training failed
     }
 
-    message("train_xgboost 2")
+    message("train_xgboost 2: Model training supposedly finished.")
+
+    # --- Add Prediction Test on Training Data ---
+    message("--- XGBoost Train: Testing predict() on training matrix ---")
+    # --- Sanity check train_x before prediction test ---
+    if (!is.matrix(train_x)) {
+      warning("train_x is not a matrix before prediction test!")
+    } else if (!is.numeric(train_x)) {
+      warning("train_x is not numeric before prediction test!")
+    } else if (anyNA(train_x)) {
+      warning("NAs found in train_x before prediction test!")
+    } else if (any(!is.finite(train_x))) {
+      warning("Non-finite values (Inf/-Inf) found in train_x before prediction test!")
+    } else {
+      message("train_x checks passed before prediction test.")
+    }
+    # --- End Sanity check ---
+    tryCatch({
+      # Explicitly set ntreelimit to default NULL
+      train_preds <- predict(model, train_x, ntreelimit = NULL)
+      message(paste("Successfully predicted on training matrix. Length:", length(train_preds)))
+    }, error = function(e_pred_test) {
+      warning(paste("Error when trying to predict on TRAINING matrix:", conditionMessage(e_pred_test)))
+      print("--- predict(model, train_x) Error Object ---")
+      print(e_pred_test)
+      print("--- End predict(model, train_x) Error Object ---")
+    })
+    message("--- End XGBoost Train: Prediction Test ---")
+    # --- End Prediction Test ---
 
 
   }, error = function(e) {
@@ -1469,7 +1503,17 @@ forecast_xgboost <- function(model, prep_recipe, full_df, train_end_date, total_
     if (length(missing_cols) > 0) {
       stop(paste("Features missing after baking for forecast:", paste(missing_cols, collapse=", ")))
     }
-    future_matrix <- as.matrix(future_features_baked[, model_features, drop = FALSE]) # Select and order
+    future_matrix_raw <- as.matrix(future_features_baked[, model_features, drop = FALSE]) # Select and order
+
+    # Ensure the matrix is purely numeric before prediction
+    future_matrix <- apply(future_matrix_raw, 2, as.numeric)
+    # Check if conversion created NAs (e.g., if non-numeric data slipped through)
+    if(anyNA(future_matrix)) {
+       warning("NAs introduced during apply(future_matrix_raw, 2, as.numeric). Check recipe steps.")
+       # Optional: print columns with NAs
+       # print(colnames(future_matrix)[colSums(is.na(future_matrix)) > 0])
+    }
+
 
     message("forecast XGBoost 1")
 
