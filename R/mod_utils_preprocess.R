@@ -56,9 +56,15 @@ create_tree_recipe <- function(df, date_col = 'ds', value_col = 'y', max_lag = 7
     # Omit rows with NA in the target *before* creating lags/windows
     recipes::step_naomit(y, skip = TRUE) %>% # skip=TRUE if you want it optional
     timetk::step_timeseries_signature(ds) %>% # Date features
-    recipes::step_rm(matches("(iso$)|(xts$)|(hour)|(min)|(sec)|(am.pm)|(qday)|(mday)|(mday7)|(mweek)|(day)")) %>%
-    recipes::step_normalize(matches("(index.num)|(year)|(yday)")) %>% # Normalizar algunas características numéricas
-    recipes::step_mutate_at(matches("(_wday)|(_lbl)"), fn = as.factor) %>% # Keep factors
+    # Use appropriate selectors instead of matches() directly in step_rm
+    recipes::step_rm(contains("iso"), contains("xts"), contains("hour"), contains("min"),
+                     contains("sec"), contains("am.pm"), contains("qday"), contains("mday"),
+                     contains("mday7"), contains("mweek"), contains("day")) %>%
+    # Use appropriate selectors for step_normalize
+    recipes::step_normalize(contains("index.num"), contains("year"), contains("yday")) %>%
+    # Use appropriate selectors for step_mutate_at (or step_mutate + across)
+    # step_mutate_at is superseded, using step_mutate with across is preferred
+    recipes::step_mutate(across(ends_with("_wday") | ends_with("_lbl"), as.factor)) %>% # Use ends_with or contains
 
     # --- Temporarily Commented Out Fourier Terms ---
     # # Determine periods based on frequency
