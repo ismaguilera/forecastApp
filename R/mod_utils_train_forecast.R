@@ -1044,14 +1044,18 @@ forecast_tbats <- function(model, total_periods_needed, train_end_date, freq_str
 
   tryCatch({
     message("Calling forecast() on TBATS object...")
-    fitted_vals <- stats::fitted(fcst) # Fitted values from forecast object
+    fcst <- forecast::forecast(model, h = total_periods_needed, level = c(80, 95)) # Generate forecast
+    if(is.null(fcst)) { # Check if forecast call itself returned NULL
+      stop("forecast::forecast(model, h = total_periods_needed, ...) returned NULL")
+    }
+    fitted_vals <- stats::fitted(fcst) # Fitted values from forecast object, AFTER fcst is created
     message("forecast.tbats() finished.")
   }, error = function(e) {
     warning(paste("TBATS forecast generation failed:", conditionMessage(e)))
-    fcst <<- NULL; fitted_vals <<- NULL
+    fcst <<- NULL; fitted_vals <<- NULL # Ensure both are NULL on error
   })
 
-  if(is.null(fcst)) {
+  if(is.null(fcst)) { # This check is now more robust
     warning("TBATS forecast generation failed, fcst object is NULL.") # Added warning
     return(NULL)
   }
@@ -1503,23 +1507,84 @@ forecast_xgboost <- function(model, prep_recipe, full_df, train_end_date, total_
     if (length(missing_cols) > 0) {
       stop(paste("Features missing after baking for forecast:", paste(missing_cols, collapse=", ")))
     }
-    future_matrix_raw <- as.matrix(future_features_baked[, model_features, drop = FALSE]) # Select and order
+    selected_future_features_df <- future_features_baked[, model_features, drop = FALSE]
 
-    # Ensure the matrix is purely numeric before prediction
-    future_matrix <- apply(future_matrix_raw, 2, as.numeric)
-    # Check if conversion created NAs (e.g., if non-numeric data slipped through)
-    if(anyNA(future_matrix)) {
-       warning("NAs introduced during apply(future_matrix_raw, 2, as.numeric). Check recipe steps.")
-       # Optional: print columns with NAs
-       # print(colnames(future_matrix)[colSums(is.na(future_matrix)) > 0])
+    # Ensure all selected columns are numeric before converting to matrix
+    are_numeric_check <- sapply(selected_future_features_df, is.numeric)
+    if (!all(are_numeric_check)) {
+        warning("XGBoost Forecast: Not all selected model_features are numeric in baked future data. Coercing non-numeric columns to numeric. This might indicate an issue with the recipe's consistency for future data or an unexpected column type.")
+        for (col_name in names(selected_future_features_df)[!are_numeric_check]) {
+            # Attempt direct coercion, NAs will be introduced if not directly coercible
+            original_class <- class(selected_future_features_df[[col_name]])
+            selected_future_features_df[[col_name]] <- as.numeric(selected_future_features_df[[col_name]])
+            new_class <- class(selected_future_features_df[[col_name]])
+            message(paste0("Coerced column '", col_name, "' from '", original_class, "' to '", new_class, "'."))
+        }
     }
 
+    future_matrix_raw <- as.matrix(selected_future_features_df)
 
-    message("forecast XGBoost 1")
+    # Ensure the matrix is purely numeric before prediction.
+    # If future_matrix_raw was already numeric, this step is just a reassignment.
+    # If future_matrix_raw became character (e.g. as.matrix on mixed types), this converts to numeric NAs.
+    if (!is.numeric(future_matrix_raw)) {
+        message("XGBoost Forecast: future_matrix_raw is not numeric. Applying as.numeric to columns.")
+        future_matrix <- apply(future_matrix_raw, 2, as.numeric)
+        # Check if NAs were introduced by 'apply' that weren't in 'future_matrix_raw' (e.g. char -> NA)
+        # This condition might be tricky if future_matrix_raw itself could have NAs.
+        # A simpler check: if as.numeric was needed and resulted in NAs.
+        if(anyNA(future_matrix) && !all(sapply(selected_future_features_df, function(col) all(is.na(col) | is.numeric(col)))) ) {
+           warning("XGBoost Forecast: NAs potentially introduced or already present after ensuring numeric matrix. Review recipe steps if unexpected.")
+        }
+    } else {
+        future_matrix <- future_matrix_raw # Already numeric
+        message("XGBoost Forecast: future_matrix_raw is already numeric.")
+    }
+    
+    # Final check for NAs before prediction
+    if(anyNA(future_matrix)) {
+       message("XGBoost Forecast: NAs are present in the final future_matrix before calling predict(). XGBoost should handle these if 'missing=NA' was used in training (default).")
+    } else {
+       message("XGBoost Forecast: No NAs in the final future_matrix before calling predict().")
+    }
 
+    # message("forecast XGBoost 1")
 
     # 7. Predict
-    predictions <- predict(model, future_matrix)
+    predictions <- NULL # Initialize predictions
+    tryCatch({
+      # --- Debugging right before predict (COMMENTED OUT) ---
+      # message("--- XGBoost Predict: Pre-call Debug ---")
+      # message("Class of model: ", class(model))
+      # message("Structure of model (first level):")
+      # print(str(model, max.level = 1))
+      # message("Model feature names (model$feature_names):")
+      # print(model$feature_names)
+      # message("Class of future_matrix: ", class(future_matrix))
+      # message("Dimensions of future_matrix: ", paste(dim(future_matrix), collapse = " x "))
+      # message("First 5 rows of future_matrix (if rows > 0):")
+      # if(nrow(future_matrix) > 0) print(head(future_matrix, 5))
+      # message("Summary of future_matrix (if rows > 0):")
+      # if(nrow(future_matrix) > 0) print(summary(future_matrix))
+      # message("Any NAs in future_matrix: ", anyNA(future_matrix))
+      # message("Are all columns in future_matrix numeric? ", all(sapply(as.data.frame(future_matrix), is.numeric)))
+      # message("--- End XGBoost Predict: Pre-call Debug ---")
+      
+      predictions <- predict(model, future_matrix)
+      
+    }, error = function(e_pred) {
+      # Keep error handling but remove detailed printing for now
+      warning(paste("Error during XGBoost predict() call:", conditionMessage(e_pred)))
+      # message("--- XGBoost predict() Full Error Object ---")
+      # print(e_pred)
+      # message("--- End XGBoost predict() Full Error Object ---")
+      # Dejar predictions como NULL
+    })
+
+    if (is.null(predictions)) {
+      stop("XGBoost predictions are NULL after tryCatch.") # Detener si la predicción falló
+    }
+    
     if (length(predictions) != total_periods_needed) stop("Predictions length different from total_periods_needed")
 
     # 8. Combine dates and predictions
@@ -1619,15 +1684,9 @@ train_gam <- function(train_df, config) {
       warning("Yearly seasonality requested but only 1 unique yday value found.")
     }
 
-    # --- KEEP Weekly Seasonality Commented Out ---
-    # if (config$use_season_w && length(unique(feature_df$wday)) > 1) {
-    #      k_weekly <- min(length(unique(feature_df$wday)) - 1, 4); if (k_weekly < 3) k_weekly <- 3
-    #      if (k_weekly >= 3) { formula_str <- paste0(formula_str, " + s(wday, bs='cc', k=", k_weekly, ")") }
-    # }
-    # --- END Weekly Seasonality ---
-
+    # --- UNCOMMENT Weekly Seasonality ---
+    # Use wday factor directly if requested and available
     if (config$use_season_w && length(unique(feature_df$wday)) > 1) {
-      # Ensure wday factor exists from prepare_gam_features
       if("wday" %in% names(feature_df) && is.factor(feature_df$wday)) {
         term_w <- "wday" # Add the factor name directly
         formula_str <- paste(formula_str, "+", term_w)
@@ -1635,6 +1694,19 @@ train_gam <- function(train_df, config) {
       } else {
         warning("Weekly seasonality requested but 'wday' factor not found or invalid in feature_df.")
       }
+    }
+    # --- END Weekly Seasonality ---
+
+    # Note: The following block was commented out previously, keeping it commented.
+    if (config$use_season_w && length(unique(feature_df$wday)) > 1) {
+      # Ensure wday factor exists from prepare_gam_features
+      if("wday" %in% names(feature_df) && is.factor(feature_df$wday)) {
+          term_w <- "wday" # Add the factor name directly
+          formula_str <- paste(formula_str, "+", term_w)
+          message(paste("  + Added weekly seasonality as factor:", term_w))
+        } else {
+          warning("Weekly seasonality requested but 'wday' factor not found or invalid in feature_df.")
+        }
     }
 
     # # Seasonal terms (using cyclic cubic splines 'cc')
@@ -1794,7 +1866,7 @@ forecast_gam <- function(model, train_df, total_periods_needed, freq_str = "day"
 #'
 #' @return A fitted ranger model object. Returns NULL on error.
 #' @noRd
-#' @import ranger recipes dplyr tibble # Ensure imports
+#' @import ranger recipes dplyr tibble
 train_rf <- function(prep_recipe, config) {
   message("Starting train_rf")
   # --- Input Validation ---
@@ -1872,7 +1944,7 @@ train_rf <- function(prep_recipe, config) {
 #'
 #' @return A list containing `$forecast` (tibble) and `$fitted` (vector). Returns NULL on error.
 #' @noRd
-#' @import ranger recipes dplyr tibble lubridate stats # Ensure imports
+#' @import ranger recipes dplyr tibble lubridate stats
 forecast_rf <- function(model, prep_recipe, full_df, train_df,
                         train_end_date, total_periods_needed, freq_str = "day") {
   message("Starting forecast_rf")

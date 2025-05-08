@@ -4,14 +4,37 @@
 #' @description Module for displaying additional forecast visualizations.
 #' @param id,input,output,session Internal parameters for {shiny}.
 #' @noRd
-#' @import shiny plotly
+#' @import shiny plotly ggplot2 forecast bslib
 mod_extra_plots_ui <- function(id){
   ns <- NS(id)
   tagList(
     h3("Additional Plots"),
-    tabsetPanel(
-      tabPanel("Cumulative Forecast", plotly::plotlyOutput(ns("cumulativePlot"))),
-      tabPanel("Forecast by Year", plotly::plotlyOutput(ns("yearlyPlot")))
+    # Remove selector from here
+    # uiOutput(ns("diagnosticModelSelectorUI")),
+    # hr(style="margin-top: 5px; margin-bottom: 10px;"),
+    bslib::accordion(
+      # Accordion item for Summary Plots with Tabs inside
+      bslib::accordion_panel(
+        title = "Summary Plots",
+        icon = shiny::icon("chart-line"),
+        tabsetPanel(
+          tabPanel("Cumulative Forecast", plotly::plotlyOutput(ns("cumulativePlot"))),
+          tabPanel("Forecast by Year", plotly::plotlyOutput(ns("yearlyPlot")))
+        )
+      ),
+      # Accordion item for Diagnostic Plots with Selector and Tabs inside
+      bslib::accordion_panel(
+        title = "Diagnostic Plots",
+        icon = shiny::icon("stethoscope"),
+        # Move selector inside this panel
+        uiOutput(ns("diagnosticModelSelectorUI")),
+        hr(style="margin-top: 5px; margin-bottom: 10px;"),
+        tabsetPanel(
+          tabPanel("Residuals vs Fitted", plotly::plotlyOutput(ns("residualsVsFittedPlot"))),
+          tabPanel("Residual ACF", plotly::plotlyOutput(ns("residualAcfPlot"))),
+          tabPanel("Residual PACF", plotly::plotlyOutput(ns("residualPacfPlot")))
+        )
+      )
     )
   )
 }
@@ -21,16 +44,116 @@ mod_extra_plots_ui <- function(id){
 #' @param id Internal parameter for {shiny}.
 #' @param reactive_train_df Reactive training data (`ds`, `y`).
 #' @param reactive_test_df Reactive test data (`ds`, `y`).
-#' @param reactive_forecast_df Reactive forecast data (`ds`, `yhat`).
 #' @param reactive_forecast_list A reactive returning a named list of forecast dataframes.
+#' @param reactive_fitted_list A reactive returning a named list of fitted value vectors.
 #' @noRd
-#' @import shiny plotly dplyr lubridate tidyr purrr RColorBrewer
+#' @import shiny plotly dplyr lubridate tidyr purrr RColorBrewer ggplot2 forecast
 #' @importFrom rlang %||%
-mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reactive_forecast_list){
+#' @importFrom stats residuals
+mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reactive_forecast_list, reactive_fitted_list, reactive_selected_summary_model){ # Added reactive_selected_summary_model
   moduleServer( id, function(input, output, session){
     ns <- session$ns
 
-    # Reactive for combined historical + forecast data
+    # --- Model Selector for Diagnostic Plots ---
+    output$diagnosticModelSelectorUI <- renderUI({
+      fitted_list <- reactive_fitted_list()
+      req(fitted_list)
+      model_choices <- names(fitted_list)
+      validate(need(length(model_choices) > 0, "No fitted values available for diagnostic plots."))
+
+      selectInput(ns("selected_diagnostic_model"),
+                  label = "Select Model for Diagnostic Plots:",
+                  choices = model_choices,
+                  selected = model_choices[1])
+    })
+
+    # --- Observer to link Summary selection to Diagnostic selection ---
+    observeEvent(reactive_selected_summary_model(), {
+      selected_summary <- reactive_selected_summary_model()
+      # Check if the selected model from summary exists in the choices for diagnostics
+      # (It should, as both are based on successful runs, but good practice to check)
+      fitted_list <- reactive_fitted_list()
+      req(fitted_list)
+      if (!is.null(selected_summary) && selected_summary %in% names(fitted_list)) {
+        updateSelectInput(session, "selected_diagnostic_model", selected = selected_summary)
+      }
+    })
+
+    # --- Reactive for Residual Calculation ---
+    reactive_residuals_data <- reactive({
+      selected_model <- input$selected_diagnostic_model
+      train_df <- reactive_train_df()
+      fitted_list <- reactive_fitted_list()
+
+      req(selected_model, train_df, fitted_list)
+      validate(need(selected_model %in% names(fitted_list), "Selected model not found in fitted values list."))
+
+      fitted_values <- fitted_list[[selected_model]]
+      actual_values <- train_df$y
+
+      # Ensure lengths match
+      req(length(fitted_values) == length(actual_values))
+
+      # Calculate residuals
+      residuals_vec <- actual_values - fitted_values
+
+      # Return a tibble for plotting
+      tibble::tibble(
+        Fitted = fitted_values,
+        Residuals = residuals_vec,
+        Time = seq_along(residuals_vec) # Simple index for ACF/PACF plots if needed
+        # Could also add train_df$ds if needed, but ensure alignment
+      )
+    })
+
+    # --- Residuals vs Fitted Plot ---
+    output$residualsVsFittedPlot <- plotly::renderPlotly({
+      res_data <- reactive_residuals_data()
+      req(res_data)
+      selected_model <- input$selected_diagnostic_model # Get selected model name for title
+
+      p <- ggplot(res_data, aes(x = Fitted, y = Residuals)) +
+        geom_point(alpha = 0.6) +
+        geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+        labs(title = paste("Residuals vs Fitted Values -", selected_model),
+             x = "Fitted Values",
+             y = "Residuals") +
+        theme_minimal()
+
+      plotly::ggplotly(p)
+    })
+
+    # --- Residual ACF Plot ---
+    output$residualAcfPlot <- plotly::renderPlotly({
+      res_data <- reactive_residuals_data()
+      req(res_data)
+      selected_model <- input$selected_diagnostic_model
+
+      # Use forecast::ggAcf for easy plotting
+      # Requires residuals as a numeric vector or ts object
+      p_acf <- forecast::ggAcf(res_data$Residuals, lag.max = 40) + # Adjust lag.max if needed
+        labs(title = paste("ACF of Residuals -", selected_model)) +
+        theme_minimal()
+
+      plotly::ggplotly(p_acf)
+    })
+
+    # --- Residual PACF Plot ---
+    output$residualPacfPlot <- plotly::renderPlotly({
+      res_data <- reactive_residuals_data()
+      req(res_data)
+      selected_model <- input$selected_diagnostic_model
+
+      p_pacf <- forecast::ggPacf(res_data$Residuals, lag.max = 40) +
+        labs(title = paste("PACF of Residuals -", selected_model)) +
+        theme_minimal()
+
+      plotly::ggplotly(p_pacf)
+    })
+
+
+    # --- Existing Plots (Cumulative and Yearly) ---
+    # (Keep the existing logic for these plots below)
     # combined_data <- reactive({
     #   req(reactive_train_df())
     #   # Forecast is required for these plots

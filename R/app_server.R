@@ -2,9 +2,12 @@
 
 #' The application server-side
 #' @param input,output,session Internal parameters for {shiny}. DO NOT REMOVE.
-#' @import shiny dplyr tibble forecast
+#' @import shiny dplyr tibble forecast parsnip workflows tune dials rsample yardstick timetk recipes slider
 #' @importFrom shinyjs reset
 #' @importFrom RColorBrewer brewer.pal
+#' @importFrom stats predict 
+#' @importFrom utils head capture.output str 
+#' @importFrom purrr reduce 
 # Needed for forecast() call inside observeEvent
 # Add other necessary imports if functions are called directly here
 #' @noRd
@@ -65,7 +68,7 @@ app_server <- function(input, output, session) {
       r$run_models_summary # Pass the whole list
     }, ignoreNULL = FALSE)
     # Remove older individual reactive arguments
-  )
+  ) -> summary_reactives # Assign module output to a variable
 
   mod_results_table_server(
     "results_table_1",
@@ -86,7 +89,14 @@ app_server <- function(input, output, session) {
     reactive_forecast_list = eventReactive(r$run_id, {
       req(r$run_id > 0)
       r$forecast_list
-    }, ignoreNULL = FALSE)
+    }, ignoreNULL = FALSE),
+    # Pass the list of fitted values, triggered by run_id
+    reactive_fitted_list = eventReactive(r$run_id, {
+       req(r$run_id > 0)
+       r$fitted_list
+    }, ignoreNULL = FALSE),
+    # Pass the selected model name from the summary module
+    reactive_selected_summary_model = summary_reactives$selected_model # Assuming the summary module returns the input value
   )
 
 
@@ -481,27 +491,183 @@ app_server <- function(input, output, session) {
                 colsample_bytree = model_config_reactives$xgb_colsample(),
                 gamma = model_config_reactives$xgb_gamma()
               ) # Extract XGBoost config
-              model_summary_entry$config <- config
-              recipe <- create_tree_recipe(full_aggregated_df, freq_str = freq_str)
-              req(recipe, "XGBoost recipe failed")
-              model_or_fcst_obj <- train_xgboost(recipe, config)
-              req(model_or_fcst_obj, "XGBoost model failed")
-              # shiny::incProgress(0.6, detail = "Forecasting XGBoost...")
+              # --- XGBoost Tuning Workflow ---
+              message("Setting up XGBoost tuning workflow...")
+              # 1. Get UNPREPARED recipe
+              unprepared_recipe <- create_tree_recipe(full_aggregated_df, freq_str = freq_str)
+              req(unprepared_recipe, "XGBoost recipe creation failed")
 
-              ##### ACÁ ESTÁ EL PROBLEMA ----
-              forecast_tibble <- forecast_xgboost(model_or_fcst_obj, recipe, full_aggregated_df, last_train_date, total_periods_needed, freq_str)
-              req(forecast_tibble, , "XGBoost forecast failed")
-              message(print("forecast_tibble"))
-              # forecast_tibble <- forecast_output$forecast
-              # Get fitted values by predicting on training portion of baked data
-              # Need to bake train_df using the *prepared* recipe
-              train_baked <- recipes::bake(recipe, new_data = train_df, all_predictors())
-              # Ensure features match model features before predicting
-              model_features <- model_or_fcst_obj$feature_names
-              missing_train_cols <- setdiff(model_features, names(train_baked))
-              if (length(missing_train_cols) > 0) { stop("Training data missing model features after baking.")}
-              train_matrix <- as.matrix(train_baked[, model_features, drop=FALSE]) # Select and order
-              fitted_values <- predict(model_or_fcst_obj, train_matrix)
+              # 2. Define Parsnip Model Spec with Tunable Parameters
+              # Using parameters similar to UI defaults but marking some for tuning
+              xgb_spec <- parsnip::boost_tree(
+                mode = "regression",
+                engine = "xgboost",
+                mtry = tune::tune(), # Tune mtry
+                trees = 1000, # Keep trees high, let early stopping handle it (or tune)
+                min_n = tune::tune(), # Tune min_n
+                tree_depth = tune::tune(), # Tune tree_depth
+                learn_rate = tune::tune(), # Tune learn_rate
+                loss_reduction = tune::tune() # Tune gamma (loss_reduction)
+                # subsample = config$subsample # Could tune this too
+              ) %>%
+                parsnip::set_engine("xgboost", objective = "reg:squarederror")
+
+              # 3. Create Workflow
+              xgb_wf <- workflows::workflow() %>%
+                workflows::add_recipe(unprepared_recipe) %>%
+                workflows::add_model(xgb_spec)
+
+              # 4. Define Resampling Strategy (Time Series CV)
+              # Using timetk version for convenience as it's already imported
+              # Adjust initial, assess, skip based on data size/needs
+              initial_periods <- max(floor(nrow(train_df) * 0.7), 20) # Start with 70% or 20 periods
+              assess_periods <- max(floor(nrow(train_df) * 0.1), 5) # Assess on 10% or 5 periods
+              skip_periods <- max(floor(assess_periods * 0.5), 1) # Skip half the assessment period
+              
+              if(initial_periods + assess_periods > nrow(train_df)) {
+                 warning("Not enough data for default time series CV splits. Adjusting...")
+                 initial_periods <- floor(nrow(train_df) * 0.6)
+                 assess_periods <- floor(nrow(train_df) * 0.2)
+                 skip_periods <- floor(assess_periods * 0.5)
+                 req(initial_periods > 0, assess_periods > 0, skip_periods >= 0)
+              }
+
+              ts_cv_splits <- timetk::time_series_cv(
+                data = train_df, # Use training data for CV
+                date_var = ds,
+                initial = paste(initial_periods, freq_str), # e.g., "90 day" or "12 week"
+                assess = paste(assess_periods, freq_str),
+                skip = paste(skip_periods, freq_str),
+                cumulative = FALSE, # Sliding window usually preferred
+                slice_limit = 5 # Limit number of CV slices for speed
+              )
+              message(paste("Created", nrow(ts_cv_splits), "time series CV splits."))
+
+              # 5. Define Parameter Grid
+              # Use dials to define ranges and create a grid
+              xgb_params <- dials::parameters(xgb_spec) # Get tunable params from spec
+              # Define ranges (adjust as needed) using update() on the parameter set
+              # Example ranges, adjust based on features and expected values
+              num_features <- tryCatch({ # Add error handling for baking recipe just for feature count
+                 ncol(recipes::bake(recipes::prep(unprepared_recipe), new_data = NULL, has_role("predictor")))
+              }, error = function(e) {
+                 warning("Could not bake recipe to determine feature count for mtry range. Using default range.")
+                 10 # Default fallback if baking fails
+              })
+              
+              xgb_params <- update(
+                xgb_params,
+                mtry = dials::mtry(range = c(1L, max(1L, floor(num_features * 0.8)))), # Tune up to 80% of features
+                min_n = dials::min_n(range = c(2L, 20L)),
+                tree_depth = dials::tree_depth(range = c(3L, 10L)),
+                learn_rate = dials::learn_rate(range = c(-2.5, -1.0)), # Log10 scale: ~0.003 to 0.1
+                loss_reduction = dials::loss_reduction(range = c(-1.5, 1.5)) # Log10 scale: ~0.03 to ~30
+              )
+
+              # Create grid (e.g., 10 candidates)
+              set.seed(123) # for reproducibility
+              xgb_grid <- dials::grid_latin_hypercube(
+                xgb_params,
+                size = 10 # Number of parameter combinations to try
+              )
+              message(paste("Created tuning grid with", nrow(xgb_grid), "candidates."))
+
+              # 6. Run Tuning
+              shiny::incProgress(0.2, detail = "Tuning XGBoost Hyperparameters...")
+              message("Starting hyperparameter tuning (tune_grid)...")
+              tune_results <- tune::tune_grid(
+                object = xgb_wf,
+                resamples = ts_cv_splits,
+                grid = xgb_grid,
+                metrics = yardstick::metric_set(yardstick::rmse), # Optimize for RMSE
+                control = tune::control_grid(save_pred = FALSE, # Don't save predictions
+                                             verbose = TRUE, # Show progress
+                                             allow_par = FALSE) # Run sequentially for safety in Shiny
+              )
+              message("Hyperparameter tuning finished.")
+              shiny::incProgress(0.6, detail = "Finalizing best XGBoost model...")
+
+              # 7. Select Best Parameters
+              best_params <- tune::select_best(tune_results, metric = "rmse")
+              message("Best hyperparameters selected:")
+              print(best_params)
+
+              # 8. Finalize Workflow
+              final_xgb_wf <- tune::finalize_workflow(xgb_wf, best_params)
+
+              # 9. Fit Final Model on Full Training Data
+              message("Fitting final XGBoost model on full training data...")
+              final_fit <- parsnip::fit(final_xgb_wf, data = train_df)
+              message("Final model fitted.")
+
+              # 10. Extract Fitted Model and PREPARED Recipe
+              fitted_xgb_model <- workflows::extract_fit_parsnip(final_fit)
+              prep_recipe_from_fit <- workflows::extract_recipe(final_fit, estimated = TRUE) # Get PREPPED recipe
+
+              # Store tuned parameters for summary
+              model_summary_entry$tuned_params <- best_params
+              # Store original config as well? Or replace? Let's add tuned_params.
+              model_summary_entry$config <- config # Keep original config for reference if needed
+
+              # 11. Forecast using fitted model and prepared recipe
+              shiny::incProgress(0.8, detail = "Forecasting with best XGBoost...")
+              message("Calling forecast_xgboost with tuned model and prepared recipe...")
+              # Pass the extracted parsnip model object and the PREPARED recipe
+              forecast_tibble <- forecast_xgboost(
+                 model = fitted_xgb_model$fit, # Extract the underlying xgb.Booster
+                 prep_recipe = prep_recipe_from_fit, # Pass the PREPARED recipe
+                 full_df = full_aggregated_df,
+                 train_end_date = last_train_date,
+                 total_periods_needed = total_periods_needed,
+                 freq = freq_str
+               )
+              req(forecast_tibble, "XGBoost forecast failed after tuning.")
+              message("XGBoost forecast generated successfully after tuning.")
+
+              # 12. Get Fitted Values by manually baking the prepared recipe and predicting with the extracted model
+              message("Getting fitted values from tuned XGBoost model by baking train_df...")
+              fitted_values <- NULL # Initialize
+              tryCatch({
+                # Bake the *prepared* recipe using the original training data
+                # Bake EVERYTHING to ensure 'y' is available for step_lag
+                train_baked_everything_df <- recipes::bake(prep_recipe_from_fit, new_data = train_df, everything())
+                
+                # Now select only the predictors needed by the model
+                model_features <- fitted_xgb_model$fit$feature_names # Get predictor names from the fitted model
+                
+                # Check if all required predictors exist in the baked data
+                missing_train_cols <- setdiff(model_features, names(train_baked_everything_df))
+                if (length(missing_train_cols) > 0) {
+                  stop(paste("Training data missing required model features after baking:", paste(missing_train_cols, collapse=", ")))
+                }
+                
+                # Select only the required predictor columns and convert to matrix
+                train_matrix <- as.matrix(train_baked_everything_df[, model_features, drop=FALSE])
+                
+                # Predict using the extracted xgb.Booster model
+                fitted_values <- predict(fitted_xgb_model$fit, newdata = train_matrix)
+                
+                req(fitted_values, "Prediction for fitted values returned NULL.")
+                if(length(fitted_values) != nrow(train_df)) {
+                   stop(paste("Fitted values length", length(fitted_values), "does not match train_df rows", nrow(train_df)))
+                }
+                 message("Fitted values obtained successfully using extracted model.")
+              }, error = function(e_fit) {
+                 warning(paste("Failed to get fitted values from tuned XGBoost model:", conditionMessage(e_fit)))
+                 # Print error for debugging
+                 print("--- Error during manual fitted values calculation ---")
+                 print(e_fit)
+                 print("--- End Error ---")
+                 fitted_values <<- NULL # Ensure it's NULL on error
+              })
+              req(fitted_values, "Failed to calculate fitted values after tuning.") # Stop if calculation failed
+
+              # --- End XGBoost Tuning Workflow ---
+              # Leave fitted_values as NULL
+              # --- End tryCatch for fitted values ---
+              
+              # Check if fitted values were successfully calculated
+              req(fitted_values, "XGBoost fitted values calculation failed.")
             }   else if (model_name == "GAM") {
               config <- list(
                 smooth_trend = model_config_reactives$gam_trend_type() == "smooth",
@@ -525,11 +691,27 @@ app_server <- function(input, output, session) {
                 rf_min_node_size = model_config_reactives$rf_min_node_size()
               ) # Extract RF config
               model_summary_entry$config <- config
-              recipe <- create_tree_recipe(full_aggregated_df, freq_str = freq_str)
-              req(recipe, "Recipe creation failed for RF.")
-              model_or_fcst_obj <- train_rf(recipe, config)
+              # Get unprepared recipe
+              unprepared_recipe_rf <- create_tree_recipe(full_aggregated_df, freq_str = freq_str)
+              req(unprepared_recipe_rf, "Recipe creation failed for RF.")
+              # Prepare the recipe using training data
+              message("Preparing recipe for RF...")
+              prep_recipe_rf <- tryCatch({
+                 recipes::prep(unprepared_recipe_rf, training = train_df)
+              }, error = function(e){
+                 warning(paste("Failed to prepare recipe for RF:", conditionMessage(e)))
+                 NULL
+              })
+              req(prep_recipe_rf, "Recipe preparation failed for RF.")
+              message("Recipe prepared for RF.")
+              
+              # Train RF using the prepared recipe
+              model_or_fcst_obj <- train_rf(prep_recipe_rf, config)
               req(model_or_fcst_obj, "Random Forest training failed (returned NULL).")
-              forecast_output <- forecast_rf(model_or_fcst_obj, recipe, full_aggregated_df, train_df, last_train_date, total_periods_needed, freq_str)
+              
+              # Forecast RF using the prepared recipe
+              # Pass the PREPARED recipe (prep_recipe_rf) to forecast_rf
+              forecast_output <- forecast_rf(model_or_fcst_obj, prep_recipe_rf, full_aggregated_df, train_df, last_train_date, total_periods_needed, freq_str)
               req(forecast_output, "RF forecast_rf function returned NULL.")
               forecast_tibble <- forecast_output$forecast
               req(forecast_tibble, "RF forecast data frame (forecast_output$forecast) is NULL.")
@@ -562,27 +744,27 @@ app_server <- function(input, output, session) {
             message(paste("--- Finished Model:", model_name, "Successfully ---"))
 
           }, error = function(e){ # Catch error for INDIVIDUAL model
-            warning(paste("Error running model", model_name, ":", conditionMessage(e)))
-            shiny::showNotification(paste("Failed to run:", model_name), type="warning")
-            # Do not stop the loop, just skip storing results for this model
-            r$metrics_list = list() # Store list of metric tibbles (for later)
-            r$model_summary_list = list() # Store list of model summary info (for later)
+              warning(paste("Error running model", model_name, ":", conditionMessage(e)))
+              shiny::showNotification(paste("Failed to run:", model_name), type="warning")
+              # Do not stop the loop, just skip storing results for this model
+              r$metrics_list = list() # Store list of metric tibbles (for later)
+              r$model_summary_list = list() # Store list of model summary info (for later)
 
-            # r$forecast_obj <- NULL
-            # r$forecast_df <- NULL
-            r$metrics_summary <- NULL
-            # r$model_name <- NULL
-            # r$arima_selected_order <- NULL
-            # r$arima_used_frequency <- NULL
-            model_success <<- FALSE
-            model_summary_entry$success <- FALSE
-            model_summary_entry$error <- conditionMessage(e)
-            temp_summary_list[[model_name]] <- model_summary_entry
-            # Print error object to console for debugging
-            print(paste("ERROR during forecast execution:", Sys.time()))
-            print("--- Full Error Object ---")
-            print(e) # Print the whole error object 'e'
-            print("--- End Error Object ---")
+              # r$forecast_obj <- NULL
+              # r$forecast_df <- NULL
+              r$metrics_summary <- NULL
+              # r$model_name <- NULL
+              # r$arima_selected_order <- NULL
+              # r$arima_used_frequency <- NULL
+              model_success <<- FALSE
+              model_summary_entry$success <- FALSE
+              model_summary_entry$error <- conditionMessage(e)
+              temp_summary_list[[model_name]] <- model_summary_entry
+              # Print error object to console for debugging
+              print(paste("ERROR during forecast execution:", Sys.time()))
+              print("--- Full Error Object ---")
+              print(e) # Print the whole error object 'e'
+              print("--- End Error Object ---")
 
             # shiny::showNotification(
             #   paste("Error during forecast:", conditionMessage(e)), # Still show message in UI
@@ -617,12 +799,21 @@ app_server <- function(input, output, session) {
         fitted_values <- r$fitted_list[[model_name]]
 
         # --- DEBUG Metrics Check (ADD) ---
+        # --- DEBUG Metrics Check (Keep basic info) ---
         message(paste0("DEBUG Metrics: Checking model: ", model_name))
         message(paste0("DEBUG Metrics: Length of fitted_values: ", length(fitted_values)))
         message(paste0("DEBUG Metrics: Length of train_actual: ", length(train_actual)))
         message(paste0("DEBUG Metrics: Any NAs in fitted_values? ", anyNA(fitted_values)))
         message(paste0("DEBUG Metrics: Class of fitted_values: ", class(fitted_values)))
-        # --- End DEBUG Metrics Check ---
+        
+        # --- ADD Specific Logging for ARIMA/ETS Fitted Values ---
+        if (model_name %in% c("ARIMA", "ETS")) {
+          message(paste0("  Detailed check for ", model_name, " fitted values:"))
+          message(paste0("    str(): ", utils::capture.output(utils::str(fitted_values))))
+          message(paste0("    summary(): ", paste(utils::capture.output(summary(fitted_values)), collapse=" ")))
+        }
+        # --- END Specific Logging ---
+        
         forecast_tibble <- r$forecast_list[[model_name]]
         model_metrics <- list() # Store train/test for THIS model
 
@@ -698,6 +889,7 @@ app_server <- function(input, output, session) {
         # --- Update Trigger for Plot ---
         # Increment run_id only AFTER loop finishes to trigger plot update once
       if(length(r$forecast_list) > 0) {
+        message(paste("DEBUG: Models in r$forecast_list before plot update:", paste(names(r$forecast_list), collapse=", "))) # Log names before update
         r$run_id <- r$run_id + 1
         message("Finished all selected models.")
       }
