@@ -965,31 +965,26 @@ train_tbats <- function(train_df, config, aggregation_level) { # config currentl
 
     model <- tryCatch({
       do.call(forecast::tbats, args = tbats_args)
-    }, error = function(e) {
-      warning_message <- paste(
-        "Inner tbats() call failed. Error: ", conditionMessage(e),
-        "\n  Data rows: ", nrow(train_df),
-        ", TS Freq: ", stats::frequency(y_ts),
-        ", Seasonal Hint: ", if (is.null(seasonal_periods_hint)) "NULL" else paste(seasonal_periods_hint, collapse=", ")
-      )
-      warning(warning_message)
+    }, error = function(e_inner) { # Changed error variable name
+      # Simplified warning message to avoid potential scoping issues with seasonal_periods_hint
+      warning(paste0("Inner tbats() call failed. Error: ", conditionMessage(e_inner),
+                    ". Data rows: ", nrow(train_df),
+                    ", TS Freq: ", stats::frequency(y_ts)))
       return(NULL) # Return NULL from inner tryCatch
     })
 
     if (is.null(model)) {
-      message("tbats() returned NULL. Model fitting failed.")
+      message("TBATS: forecast::tbats() call resulted in NULL. Model fitting failed.")
     } else if (!inherits(model, "tbats")) {
       warning("TBATS: forecast::tbats() returned an invalid object (not class 'tbats'). Model fitting failed.")
       model <- NULL # Ensure model is NULL if not a valid tbats object
     } else {
-      message("tbats() finished.")
-      message("TBATS model fitted successfully.") # Added success message
-      # You can print details of the fitted model components if needed:
-      # print(model)
+      message("TBATS: forecast::tbats() call finished successfully.")
+      message("TBATS model fitted successfully. Method: ", model$method)
     }
 
-  }, error = function(e) { # Outer tryCatch, should ideally not be hit if inner one catches
-    warning(paste("Outer TBATS model training tryCatch failed:", conditionMessage(e)))
+  }, error = function(e_outer) { # Outer tryCatch
+    warning(paste("Outer TBATS model training tryCatch failed:", conditionMessage(e_outer)))
     model <<- NULL
   })
 
@@ -1320,13 +1315,33 @@ train_xgboost <- function(prep_recipe, config) {
       # Add other params like lambda, alpha if needed
     )
 
-    # Train the model
-    model <- xgboost::xgb.train(
-      params = parameters,
-      data = dtrain,
-      nrounds = config$nrounds,
-      verbose = 1 # Set to 1 or 2 for training progress messages
-    )
+    # --- XGBoost Train Debug ---
+    message("--- XGBoost Train: Debug ---")
+    message("Structure of dtrain (xgb.DMatrix):")
+    print(str(dtrain))
+    message("Parameters passed to xgb.train:")
+    print(str(parameters))
+    message("--- End XGBoost Train: Debug ---")
+
+    # Train the model within a tryCatch
+    model <- tryCatch({
+        xgboost::xgb.train(
+          params = parameters,
+          data = dtrain,
+          nrounds = config$nrounds,
+          verbose = 1 # Set to 1 or 2 for training progress messages
+        )
+      }, error = function(e_xgb) {
+        warning(paste("Error specifically during xgb.train call:", conditionMessage(e_xgb)))
+        print("--- xgb.train Error Object ---")
+        print(e_xgb)
+        print("--- End xgb.train Error Object ---")
+        return(NULL) # Return NULL if xgb.train fails
+      })
+
+    if(is.null(model)) {
+      stop("xgb.train failed or returned NULL.") # Stop execution if training failed
+    }
 
     message("train_xgboost 2")
 
