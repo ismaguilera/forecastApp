@@ -449,38 +449,79 @@ app_server <- function(input, output, session) {
               model_summary_entry$fitted_method <- capture.output(print(model_or_fcst_obj))[1] # Example
               req(forecast_output, forecast_tibble, fitted_values, "TBATS forecasting failed.")
             } else if (model_name == "Prophet") {
-              current_growth = model_config_reactives$prophet_growth() # Eval for logic check
-              holidays_input <- model_config_reactives$prophet_holidays_df()
-              regressors_input <- model_config_reactives$prophet_regressors_df()
+              message("Prophet: Attempting to retrieve config values...")
+              current_growth <- tryCatch({ model_config_reactives$prophet_growth() }, error = function(e) { message("Error getting prophet_growth"); NULL})
+              req(current_growth, "Failed to get Prophet growth parameter.")
+              
+              holidays_input <- tryCatch({ model_config_reactives$prophet_holidays_df() }, error = function(e) { message("Error getting prophet_holidays_df"); NULL})
+              # holidays_input can be NULL, so no req() here unless it's mandatory based on other settings
+              
+              regressors_input <- tryCatch({ model_config_reactives$prophet_regressors_df() }, error = function(e) { message("Error getting prophet_regressors_df"); NULL})
+              # regressors_input can be NULL
+              
+              prophet_capacity_val <- if(current_growth == 'logistic') {
+                tryCatch({ model_config_reactives$prophet_capacity() }, error = function(e) { message("Error getting prophet_capacity"); NULL})
+              } else { NULL }
+              if(current_growth == 'logistic') req(prophet_capacity_val, "Failed to get Prophet capacity for logistic growth.")
+
+              message("Prophet: Config values retrieved (or are NULL).")
               config <- list(
-                yearly = model_config_reactives$prophet_yearly(),
+                yearly = model_config_reactives$prophet_yearly(), # Assuming these are safe
                 weekly = model_config_reactives$prophet_weekly(),
                 daily = model_config_reactives$prophet_daily(),
                 growth = current_growth,
                 changepoint_scale = model_config_reactives$prophet_changepoint_scale(),
-                capacity = if(current_growth == 'logistic') model_config_reactives$prophet_capacity() else NULL,
+                capacity = prophet_capacity_val, # Use the retrieved value
                 used_holidays = !is.null(holidays_input),
-                used_regressors = !is.null(regressors_input) && length(setdiff(names(regressors_input %||% list()), "ds")) > 0 # Use %||% for safety
+                used_regressors = !is.null(regressors_input) && length(setdiff(names(regressors_input %||% list()), "ds")) > 0
               )
-              model_summary_entry$config <- config # Store static list
+              model_summary_entry$config <- config
 
+              message("--- Prophet: Debugging Inputs (Post Config Creation) ---") # Moved debug block
+              message("--- Prophet: Debugging Inputs ---")
+              message("Prophet Config:")
+              print(str(config))
+              message("Holidays Input (holidays_input):")
+              if(is.null(holidays_input)) message("  NULL") else print(str(head(holidays_input)))
+              message("Regressors Input (regressors_input):")
+              if(is.null(regressors_input)) message("  NULL") else print(str(head(regressors_input)))
+              
               regressor_names_input <- NULL
-              if(!is.null(regressors_input)){ regressor_names_input <- setdiff(names(regressors_input), "ds")}
-              if(length(regressor_names_input) == 0) regressors_input <- NULL # Treat as no regressors
+              if(!is.null(regressors_input)){ 
+                regressor_names_input <- setdiff(names(regressors_input), "ds")
+                message(paste("  Regressor Names (regressor_names_input):", paste(regressor_names_input, collapse=", ")))
+              }
+              if(length(regressor_names_input) == 0) {
+                regressors_input <- NULL # Treat as no regressors if only 'ds' or empty
+                message("  No valid regressor columns found, setting regressors_input to NULL.")
+              }
 
               prophet_train_df <- train_df
-              if(current_growth == 'logistic'){ prophet_train_df$cap <- model_config_reactives$prophet_capacity() }
-
-              print(str(prophet_train_df))
+              if(current_growth == 'logistic'){ 
+                prophet_train_df$cap <- model_config_reactives$prophet_capacity() 
+                message(paste("  Capacity for logistic growth:", model_config_reactives$prophet_capacity()))
+              }
+              message("Prophet Train DF (prophet_train_df) head:")
+              print(str(head(prophet_train_df)))
+              message("--- End Prophet Debugging Inputs ---")
+              
+              message("Prophet: Calling train_prophet...")
               model_or_fcst_obj <- train_prophet(prophet_train_df, config, holidays_input, regressors_input, regressor_names_input)
-              req(model_or_fcst_obj, "Prophet model training failed (returned NULL).") # Stop if NULL, add message
+              req(model_or_fcst_obj, "Prophet model training failed (train_prophet returned NULL).")
+              message("Prophet: train_prophet successful.")
 
+              message("Prophet: Calling forecast_prophet...")
               forecast_tibble <- forecast_prophet(model_or_fcst_obj, total_periods_needed, freq_str, config$capacity, regressors_input, regressor_names_input)
-              req(forecast_tibble, "Prophet forecast generation failed (returned NULL).") # Stop if NULL, add message
-              # Add check for forecast_tibble structure before proceeding
+              req(forecast_tibble, "Prophet forecast generation failed (forecast_prophet returned NULL).") 
+              message("Prophet: forecast_prophet successful.")
+              
               req(is.data.frame(forecast_tibble) && all(c("ds", "yhat") %in% names(forecast_tibble)),
-                  "Forecast tibble structure is invalid after forecast_prophet.")
+                  "Prophet: Forecast tibble structure is invalid after forecast_prophet.")
+              message("Prophet: Forecast tibble structure valid.")
+              
               fitted_values <- forecast_tibble %>% dplyr::filter(ds %in% train_df$ds) %>% pull(yhat)
+              req(length(fitted_values) == nrow(train_df), "Prophet: Fitted values length mismatch with train_df.")
+              message("Prophet: Fitted values extracted successfully.")
 
             } else if (model_name == "XGBoost") {
               config <- list(
@@ -491,9 +532,17 @@ app_server <- function(input, output, session) {
                 colsample_bytree = model_config_reactives$xgb_colsample(),
                 gamma = model_config_reactives$xgb_gamma()
               ) # Extract XGBoost config
-              # --- XGBoost Tuning Workflow ---
-              message("Setting up XGBoost tuning workflow...")
-              # 1. Get UNPREPARED recipe
+              
+              # Get the enable_tuning reactive
+              enable_xgb_tuning <- model_config_reactives$xgb_enable_tuning()
+              model_summary_entry$config <- config # Store original config
+              model_summary_entry$tuning_enabled <- enable_xgb_tuning # Store if tuning was run
+
+              if (isTRUE(enable_xgb_tuning)) {
+                message("XGBoost: Hyperparameter tuning ENABLED.")
+                # --- XGBoost Tuning Workflow ---
+                message("Setting up XGBoost tuning workflow...")
+                # 1. Get UNPREPARED recipe
               unprepared_recipe <- create_tree_recipe(full_aggregated_df, freq_str = freq_str)
               req(unprepared_recipe, "XGBoost recipe creation failed")
 
@@ -661,13 +710,39 @@ app_server <- function(input, output, session) {
                  fitted_values <<- NULL # Ensure it's NULL on error
               })
               req(fitted_values, "Failed to calculate fitted values after tuning.") # Stop if calculation failed
-
               # --- End XGBoost Tuning Workflow ---
-              # Leave fitted_values as NULL
-              # --- End tryCatch for fitted values ---
-              
-              # Check if fitted values were successfully calculated
-              req(fitted_values, "XGBoost fitted values calculation failed.")
+              } else {
+                message("XGBoost: Hyperparameter tuning DISABLED. Using UI parameters.")
+                # Original non-tuning workflow
+                unprepared_recipe_xgb <- create_tree_recipe(full_aggregated_df, freq_str = freq_str)
+                req(unprepared_recipe_xgb, "XGBoost recipe creation failed (tuning off).")
+                
+                message("Preparing recipe for XGBoost (tuning off)...")
+                prep_recipe_xgb <- tryCatch({
+                  recipes::prep(unprepared_recipe_xgb, training = train_df)
+                }, error = function(e){
+                  warning(paste("Failed to prepare recipe for XGBoost (tuning off):", conditionMessage(e)))
+                  NULL
+                })
+                req(prep_recipe_xgb, "Recipe preparation failed for XGBoost (tuning off).")
+                message("Recipe prepared for XGBoost (tuning off).")
+
+                model_or_fcst_obj <- train_xgboost(prep_recipe_xgb, config) # config from UI
+                req(model_or_fcst_obj, "XGBoost model training failed (tuning off).")
+                
+                forecast_tibble <- forecast_xgboost(model_or_fcst_obj, prep_recipe_xgb, full_aggregated_df, last_train_date, total_periods_needed, freq_str)
+                req(forecast_tibble, "XGBoost forecast failed (tuning off).")
+                
+                # Get fitted values
+                train_baked_df <- recipes::bake(prep_recipe_xgb, new_data = train_df, everything())
+                model_features <- model_or_fcst_obj$feature_names
+                missing_cols <- setdiff(model_features, names(train_baked_df))
+                if (length(missing_cols) > 0) stop(paste("XGBoost (tuning off): Training data missing features:", paste(missing_cols, collapse=", ")))
+                train_matrix <- as.matrix(train_baked_df[, model_features, drop=FALSE])
+                fitted_values <- predict(model_or_fcst_obj, train_matrix)
+                req(fitted_values, "XGBoost fitted values calculation failed (tuning off).")
+                model_summary_entry$tuned_params <- NULL # Ensure no tuned params are stored
+              }
             }   else if (model_name == "GAM") {
               config <- list(
                 smooth_trend = model_config_reactives$gam_trend_type() == "smooth",
@@ -702,23 +777,142 @@ app_server <- function(input, output, session) {
                  warning(paste("Failed to prepare recipe for RF:", conditionMessage(e)))
                  NULL
               })
-              req(prep_recipe_rf, "Recipe preparation failed for RF.")
-              message("Recipe prepared for RF.")
-              
-              # Train RF using the prepared recipe
-              model_or_fcst_obj <- train_rf(prep_recipe_rf, config)
-              req(model_or_fcst_obj, "Random Forest training failed (returned NULL).")
-              
-              # Forecast RF using the prepared recipe
-              # Pass the PREPARED recipe (prep_recipe_rf) to forecast_rf
-              forecast_output <- forecast_rf(model_or_fcst_obj, prep_recipe_rf, full_aggregated_df, train_df, last_train_date, total_periods_needed, freq_str)
-              req(forecast_output, "RF forecast_rf function returned NULL.")
-              forecast_tibble <- forecast_output$forecast
-              req(forecast_tibble, "RF forecast data frame (forecast_output$forecast) is NULL.")
-              fitted_values <- forecast_output$fitted
-              req(fitted_values, "RF fitted values (forecast_output$fitted) is NULL.")
+              req(unprepared_recipe_rf, "Recipe creation failed for RF.")
+              # NOTE: We no longer prepare the recipe here for tuning workflow
 
-              # --- Metrics Calculation ---
+              # Get the enable_tuning reactive for RF
+              enable_rf_tuning <- model_config_reactives$rf_enable_tuning()
+              model_summary_entry$config <- config # Store original config
+              model_summary_entry$tuning_enabled <- enable_rf_tuning # Store if tuning was run
+
+              if (isTRUE(enable_rf_tuning)) {
+                message("Random Forest: Hyperparameter tuning ENABLED.")
+                # --- RF Tuning Workflow ---
+                message("Setting up Random Forest tuning workflow...")
+                # 2. Define Parsnip Model Spec with Tunable Parameters
+              rf_spec <- parsnip::rand_forest(
+                mode = "regression",
+                engine = "ranger",
+                mtry = tune::tune(), # Tune mtry
+                trees = 500, # Keep trees fixed for now, could tune
+                min_n = tune::tune() # Tune min_n
+              ) %>%
+                parsnip::set_engine("ranger", importance = "impurity", num.threads = 1) # Keep single thread
+
+              # 3. Create Workflow
+              rf_wf <- workflows::workflow() %>%
+                workflows::add_recipe(unprepared_recipe_rf) %>% # Use unprepared recipe
+                workflows::add_model(rf_spec)
+
+              # 4. Define Resampling Strategy (Reuse from XGBoost)
+              # Ensure ts_cv_splits is defined earlier in the observeEvent if needed
+              # For now, assume it's available from XGBoost block if run together,
+              # otherwise, recalculate it here if RF is run alone.
+              # Let's recalculate for robustness if run alone:
+              if (!exists("ts_cv_splits") || is.null(ts_cv_splits)) {
+                 message("Recalculating ts_cv_splits for RF tuning.")
+                 initial_periods <- max(floor(nrow(train_df) * 0.7), 20)
+                 assess_periods <- max(floor(nrow(train_df) * 0.1), 5)
+                 skip_periods <- max(floor(assess_periods * 0.5), 1)
+                 if(initial_periods + assess_periods > nrow(train_df)) {
+                    initial_periods <- floor(nrow(train_df) * 0.6); assess_periods <- floor(nrow(train_df) * 0.2); skip_periods <- floor(assess_periods * 0.5)
+                 }
+                 req(initial_periods > 0, assess_periods > 0, skip_periods >= 0)
+                 ts_cv_splits <- timetk::time_series_cv(data = train_df, date_var = ds, initial = paste(initial_periods, freq_str), assess = paste(assess_periods, freq_str), skip = paste(skip_periods, freq_str), cumulative = FALSE, slice_limit = 5)
+                 message(paste("Created", nrow(ts_cv_splits), "time series CV splits for RF."))
+              }
+
+              # 5. Define Parameter Grid
+              rf_params <- dials::parameters(rf_spec)
+              num_features_rf <- tryCatch({ ncol(recipes::bake(recipes::prep(unprepared_recipe_rf), new_data = NULL, has_role("predictor"))) }, error = function(e) { 10 })
+              rf_params <- update(
+                rf_params,
+                mtry = dials::mtry(range = c(1L, max(1L, floor(num_features_rf * 0.8)))),
+                min_n = dials::min_n(range = c(2L, 20L))
+              )
+              set.seed(456) # Use a different seed
+              rf_grid <- dials::grid_latin_hypercube(rf_params, size = 10)
+              message(paste("Created RF tuning grid with", nrow(rf_grid), "candidates."))
+
+              # 6. Run Tuning
+              shiny::incProgress(0.2, detail = "Tuning Random Forest Hyperparameters...")
+              message("Starting RF hyperparameter tuning (tune_grid)...")
+              rf_tune_results <- tune::tune_grid(
+                object = rf_wf,
+                resamples = ts_cv_splits,
+                grid = rf_grid,
+                metrics = yardstick::metric_set(yardstick::rmse),
+                control = tune::control_grid(save_pred = FALSE, verbose = TRUE, allow_par = FALSE)
+              )
+              message("RF Hyperparameter tuning finished.")
+              shiny::incProgress(0.6, detail = "Finalizing best Random Forest model...")
+
+              # 7. Select Best Parameters
+              best_rf_params <- tune::select_best(rf_tune_results, metric = "rmse")
+              message("Best RF hyperparameters selected:")
+              print(best_rf_params)
+
+              # 8. Finalize Workflow
+              final_rf_wf <- tune::finalize_workflow(rf_wf, best_rf_params)
+
+              # 9. Fit Final Model
+              message("Fitting final Random Forest model...")
+              final_rf_fit <- parsnip::fit(final_rf_wf, data = train_df)
+              message("Final RF model fitted.")
+
+              # 10. Extract Model and Prepared Recipe
+              fitted_rf_model <- workflows::extract_fit_parsnip(final_rf_fit)
+              prep_recipe_rf_from_fit <- workflows::extract_recipe(final_rf_fit, estimated = TRUE)
+
+              # Store tuned parameters
+              model_summary_entry$tuned_params <- best_rf_params
+              model_summary_entry$config <- config # Keep original config
+
+              # 11. Forecast using fitted model and prepared recipe
+              shiny::incProgress(0.8, detail = "Forecasting with best Random Forest...")
+              message("Calling forecast_rf with tuned model and prepared recipe...")
+              # Pass the extracted ranger model and the PREPARED recipe
+              forecast_output <- forecast_rf(
+                 model = fitted_rf_model$fit, # Extract the underlying ranger model
+                 prep_recipe = prep_recipe_rf_from_fit, # Pass the PREPARED recipe
+                 full_df = full_aggregated_df,
+                 train_df = train_df, # Pass train_df again for fitted value calculation inside forecast_rf
+                 train_end_date = last_train_date,
+                 total_periods_needed = total_periods_needed,
+                 freq_str = freq_str
+               )
+              req(forecast_output, "RF forecast_rf function returned NULL after tuning.")
+              forecast_tibble <- forecast_output$forecast
+              req(forecast_tibble, "RF forecast data frame is NULL after tuning.")
+              fitted_values <- forecast_output$fitted # Get fitted values from forecast_rf return
+              req(fitted_values, "RF fitted values are NULL after tuning.")
+              message("RF forecast and fitted values generated successfully after tuning.")
+              # --- End RF Tuning Workflow ---
+              } else {
+                message("Random Forest: Hyperparameter tuning DISABLED. Using UI parameters.")
+                # Original non-tuning workflow for RF
+                # Prepare the recipe using training data (already got unprepared_recipe_rf)
+                message("Preparing recipe for RF (tuning off)...")
+                prep_recipe_rf <- tryCatch({
+                   recipes::prep(unprepared_recipe_rf, training = train_df)
+                }, error = function(e){
+                   warning(paste("Failed to prepare recipe for RF (tuning off):", conditionMessage(e)))
+                   NULL
+                })
+                req(prep_recipe_rf, "Recipe preparation failed for RF (tuning off).")
+                message("Recipe prepared for RF (tuning off).")
+
+                model_or_fcst_obj <- train_rf(prep_recipe_rf, config) # config from UI
+                req(model_or_fcst_obj, "Random Forest training failed (tuning off).")
+                
+                forecast_output <- forecast_rf(model_or_fcst_obj, prep_recipe_rf, full_aggregated_df, train_df, last_train_date, total_periods_needed, freq_str)
+                req(forecast_output, "RF forecast_rf function returned NULL (tuning off).")
+                forecast_tibble <- forecast_output$forecast
+                req(forecast_tibble, "RF forecast data frame is NULL (tuning off).")
+                fitted_values <- forecast_output$fitted
+                req(fitted_values, "RF fitted values are NULL (tuning off).")
+                model_summary_entry$tuned_params <- NULL # Ensure no tuned params are stored
+              }
               # metrics_list <- list()
               # # Train Metrics (check logic remains the same)
               # train_actual <- train_df$y

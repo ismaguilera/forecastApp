@@ -376,6 +376,54 @@ mod_model_summary_server <- function(id, reactive_run_summary_list){ # Simplifie
             )
           )
         }, # End RF case
+        "RF" = {
+          tagList(
+            tags$p(tags$strong("Model Type:"), " Random Forest (Tree Ensemble via 'ranger')"),
+            tags$p(tags$strong("Feature Engineering:")),
+            tags$ul(
+              # Copied from XGBoost - assumes same recipe
+              tags$li("Time series features generated automatically via a recipe:"),
+              tags$ul(
+                tags$li("Date components (year, month, week, etc.)"),
+                tags$li("Lagged values of the target variable."),
+                tags$li("Rolling window statistics (mean, sd) on lagged values."),
+                tags$li("Fourier terms for seasonality.")
+              )
+            ),
+            tags$p(tags$strong("Hyperparameters:")),
+            # Display Tuned Parameters if available
+            if (!is.null(model_info$tuned_params)) {
+              tuned <- model_info$tuned_params
+              tags$ul(
+                tags$li(paste("Tuning Method: Time Series CV + tune_grid")),
+                tags$li(tags$strong("Best Parameters Found:")),
+                tags$ul(
+                  lapply(names(tuned)[!names(tuned) %in% ".config"], function(param_name) {
+                     tags$li(paste0(param_name, ": ", round(tuned[[param_name]], 4)))
+                  })
+                )
+              )
+            } else {
+              # Fallback to original config if tuning info not present
+              num_trees <- config$rf_num_trees
+              mtry_in <- config$rf_mtry
+              mtry_disp <- if (!is.null(mtry_in) && mtry_in > 0) as.character(mtry_in) else "Auto (sqrt(p))"
+              node_size <- config$rf_min_node_size
+              tags$ul(
+                tags$li(paste("Number of Trees:", num_trees %||% 500)),
+                tags$li(paste("Variables per Split (mtry):", mtry_disp)),
+                tags$li(paste("Min Node Size:", node_size %||% 5))
+              )
+            },
+            tags$p(tags$strong("Interpretation:")),
+            tags$ul(
+              tags$li("Builds multiple independent decision trees on bootstrapped samples of data and features."),
+              tags$li("Predictions are typically the average of individual tree predictions."),
+              tags$li("Effective for non-linear patterns and interactions; often robust to overfitting."),
+              tags$li("Like XGBoost, relies on engineered features for time dynamics.")
+            )
+          )
+        }, # End RF case
 
         # Default case if model_name is not recognized
         {
