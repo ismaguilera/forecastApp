@@ -32,11 +32,11 @@ mod_data_input_ui <- function(id){
                br(),
                selectInput(ns("dateCol"), "Select Date Column", choices = NULL),
                selectInput(ns("valueCol"), "Select Value Column", choices = NULL)
-               ),
+      ),
       tabPanel("Preview",
                br(),
                DT::DTOutput(ns("dataPreview"))
-               )
+      )
     )
   )
 }
@@ -65,87 +65,83 @@ mod_data_input_server <- function(id){
     ns <- session$ns
     # Use a reactiveVal to store the data source trigger
     # It updates on file upload OR default button click
-    data_trigger <- reactiveVal(NULL)
+    # data_trigger <- reactiveVal(NULL) # No longer needed in this form
 
-    observeEvent(input$fileUpload, { data_trigger(input$fileUpload) })
-    observeEvent(input$loadDefault, { data_trigger("load_default") })
+    # New reactiveVal to store the processed dataframe
+    reactive_df_data <- reactiveVal(NULL)
 
-    # Reactive expression to store the raw uploaded/default data
+    # --- Observer for File Upload ---
+    observeEvent(input$fileUpload, {
+      req(input$fileUpload)
+      message("File upload triggered.") # Debug message
 
-    uploaded_data <- reactive({
-      trigger <- data_trigger()
-      req(trigger) # Require either upload or button press
-      if (is.character(trigger) && trigger == "load_default") {
-        # --- Load Default Data ---
-        default_file_name <- get_golem_config("default_data_file")
-        # Check if config value exists
-        validate(need(!is.null(default_file_name), "Default data file not specified in config."))
-        # Construct path using app_sys
-        default_file_path <- app_sys("extdata", default_file_name)
+      trigger <- input$fileUpload
+      ext <- tools::file_ext(trigger$name)
 
-        validate(need(file.exists(default_file_path), paste("Default data file not found at:", default_file_path)))
-
-        df <- tryCatch({
-          # Assuming CSV for default, add checks/options if needed
-          utils::read.csv(default_file_path, stringsAsFactors = FALSE)
-        }, error = function(e) {
-          shiny::showNotification(paste("Error reading default file:", e$message), type = "error", duration = 10)
-          return(NULL)
-        })
-        if (!is.null(df)) {
-          shiny::showNotification("Default dataset loaded successfully!", type = "message", duration = 5)
+      df <- tryCatch({
+        if (ext == "csv") {
+          message("Reading CSV file from upload.") # Debug message
+          utils::read.csv(trigger$datapath, stringsAsFactors = FALSE)
+        } else if (ext == "xlsx") {
+          message("Reading Excel file from upload.") # Debug message
+          readxl::read_excel(trigger$datapath)
+        } else {
+          stop("Unsupported file type. Please upload a .csv or .xlsx file.")
         }
-        return(df)
-        # --- End Load Default ---
-
-      } else if (inherits(trigger, "list") && !is.null(trigger$datapath)) {
-        # --- Load Uploaded Data ---
-        ext <- tools::file_ext(trigger$name)
-        df <- tryCatch({
-          if (ext == "csv") {
-            utils::read.csv(trigger$datapath, stringsAsFactors = FALSE)
-          } else if (ext == "xlsx") {
-            readxl::read_excel(trigger$datapath)
-          } else { stop("Unsupported file type.") }
-        }, error = function(e) {
-          shiny::showNotification(paste("Error reading uploaded file:", e$message), type = "error", duration = 10)
-          return(NULL)
-        })
-        if (!is.null(df)) {
-          shiny::showNotification("File uploaded successfully!", type = "message", duration = 5)
-        }
-        return(df)
-        # --- End Load Uploaded ---
-      } else {
-        # Should not happen if req(trigger) is used, but good practice
+      }, error = function(e) {
+        shiny::showNotification(
+          paste("Error reading uploaded file:", e$message),
+          type = "error",
+          duration = 10
+        )
+        message(paste("Error reading uploaded file:", e$message)) # Debug message
         return(NULL)
+      })
+
+      if (!is.null(df)) {
+        shiny::showNotification("File uploaded successfully!", type = "message", duration = 5)
+        message(paste("Successfully read uploaded file. Dimensions:", nrow(df), "rows,", ncol(df), "columns.")) # Debug message
+        reactive_df_data(df) # Update the reactiveVal with the dataframe
+      } else {
+        reactive_df_data(NULL) # Set to NULL if reading failed
       }
-      # req(input$fileUpload)
-      # ext <- tools::file_ext(input$fileUpload$name)
-      # df <- tryCatch({
-      #   if (ext == "csv") {
-      #     utils::read.csv(input$fileUpload$datapath, stringsAsFactors = FALSE)
-      #   } else if (ext == "xlsx") {
-      #     readxl::read_excel(input$fileUpload$datapath)
-      #   } else {
-      #     stop("Unsupported file type. Please upload a .csv or .xlsx file.")
-      #   }
-      # }, error = function(e) {
-      #   shiny::showNotification(
-      #     paste("Error reading file:", e$message),
-      #     type = "error",
-      #     duration = 10
-      #   )
-      #   return(NULL)
-      # })
-      # if (!is.null(df)) {
-      #   shiny::showNotification("File uploaded successfully!", type = "message", duration = 5)
-      # }
-      # return(df)
     })
 
-    observeEvent(uploaded_data(), {
-      df <- uploaded_data()
+    # --- Observer for Load Default Button ---
+    observeEvent(input$loadDefault, {
+      message("Load default button triggered.") # Debug message
+      # --- Load Default Data ---
+      default_file_name <- get_golem_config("default_data_file")
+      # Check if config value exists
+      validate(need(!is.null(default_file_name), "Default data file not specified in config."))
+      # Construct path using app_sys
+      default_file_path <- app_sys("extdata", default_file_name)
+
+      validate(need(file.exists(default_file_path), paste("Default data file not found at:", default_file_path)))
+
+      df <- tryCatch({
+        # Assuming CSV for default, add checks/options if needed
+        message("Reading default CSV file.") # Debug message
+        utils::read.csv(default_file_path, stringsAsFactors = FALSE)
+      }, error = function(e) {
+        shiny::showNotification(paste("Error reading default file:", e$message), type = "error", duration = 10)
+        message(paste("Error reading default file:", e$message)) # Debug message
+        return(NULL)
+      })
+      if (!is.null(df)) {
+        shiny::showNotification("Default dataset loaded successfully!", type = "message", duration = 5)
+        message(paste("Successfully read default file. Dimensions:", nrow(df), "rows,", ncol(df), "columns.")) # Debug message
+        reactive_df_data(df) # Update the reactiveVal with the dataframe
+      } else {
+        reactive_df_data(NULL) # Set to NULL if reading failed
+      }
+      # --- End Load Default ---
+    })
+
+    # --- Observer to update column selectors when data changes ---
+    observeEvent(reactive_df_data(), {
+      df <- reactive_df_data()
+      message("reactive_df_data updated. Updating select inputs.") # Debug message
       if (!is.null(df) && ncol(df) > 0) {
         col_names <- colnames(df)
         potential_date_col <- grep("date|time", col_names, ignore.case = TRUE, value = TRUE)
@@ -166,9 +162,11 @@ mod_data_input_server <- function(id){
       }
     })
 
+    # --- Data Preview Table ---
     output$dataPreview <- DT::renderDT({
-      df <- uploaded_data()
+      df <- reactive_df_data()
       req(df)
+      message("Rendering data preview table.") # Debug message
       DT::datatable(
         utils::head(df, 10),
         options = list(pageLength = 5, scrollX = TRUE, searching = FALSE, lengthChange = FALSE),
@@ -176,9 +174,10 @@ mod_data_input_server <- function(id){
       )
     })
 
+    # --- Return values ---
     return(
       list(
-        reactive_df = uploaded_data,
+        reactive_df = reactive_df_data, # Return the reactiveVal holding the dataframe
         reactive_date_col = reactive({ input$dateCol }),
         reactive_value_col = reactive({ input$valueCol })
       )

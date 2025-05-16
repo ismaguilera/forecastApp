@@ -285,13 +285,18 @@ mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reac
 
       if(nrow(history_df) == 0) validate("No valid historical data points.")
 
+      # Calculate the start of the current year
+      start_of_current_year <- floor_date(Sys.Date(), unit = "year")
+
+      # Filter history to start from the beginning of the current year or the earliest date if later
       history_cumulative <- history_df %>%
+        dplyr::filter(ds >= max(min(ds), start_of_current_year)) %>%
         dplyr::mutate(Cumulative_Value = cumsum(y),
                       Model = "Actuals", # Assign model name
                       Set = "Actuals") %>% # Assign set type
         dplyr::select(ds, Cumulative_Value, Set, Model)
 
-      # Get last historical values needed for forecast branching
+      # Get last historical values needed for forecast branching AFTER filtering for the current year
       last_hist_cumulative <- dplyr::last(history_cumulative$Cumulative_Value) %||% 0 # Default to 0 if no history
       last_hist_date <- dplyr::last(history_cumulative$ds)
 
@@ -370,43 +375,101 @@ mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reac
 
     # --- Yearly Plot (Comparing ALL models) ---
     output$yearlyPlot <- plotly::renderPlotly({
+      train_df <- reactive_train_df()
+      test_df <- reactive_test_df() %||% tibble::tibble(ds=as.Date(character()), y=numeric()) # Ensure test_df is not NULL
       forecast_list <- reactive_forecast_list()
-      test_df <- reactive_test_df() %||% data.frame(ds=as.Date(character())) # Ensure test_df is not NULL
 
-      req(forecast_list)
-      validate(need(length(forecast_list) > 0, "No forecast results available for yearly plot."))
-      validate(need(nrow(test_df)>0, "Test data needed to define start of yearly plot summary.")) # Need test start date
+      req(train_df, forecast_list)
+      validate(
+        need(nrow(train_df) > 0, "Training data needed for yearly plot."),
+        need(length(forecast_list) > 0, "No forecast results available for yearly plot.")
+      )
+      message("Yearly Plot: Preparing data for all models.")
 
-      min_plot_date <- min(test_df$ds) # Start summary from test period start
+      # Combine train and test data for historical values
+      history_df <- dplyr::bind_rows(
+        train_df %>% dplyr::select(ds, y),
+        test_df %>% dplyr::select(ds, y)
+      ) %>%
+        dplyr::filter(!is.na(y)) # Keep only actual historical values
 
-      # Process each forecast df in the list
+      # Process each forecast df in the list and combine with history
       all_yearly_summaries <- purrr::map_dfr(
         .x = forecast_list,
         .id = "Model", # Creates a 'Model' column from list names
-        .f = function(fcst_df) {
+        .f = function(fcst_df, model_name) {
           if(is.null(fcst_df) || !("yhat" %in% names(fcst_df))) return(NULL) # Skip if invalid
-          fcst_df %>%
-            dplyr::filter(ds >= min_plot_date) %>% # Filter to test + future forecast
+
+          # Combine historical data with forecast data for this model
+          combined_df <- dplyr::full_join(
+            history_df, # Actual historical values
+            fcst_df %>% dplyr::select(ds, yhat), # Forecasted values
+            by = "ds"
+          ) %>%
+            dplyr::mutate(
+              # Use actual value if available, otherwise use forecast
+              Value = dplyr::coalesce(y, yhat),
+              # Assign a type for coloring/grouping if needed, though not used in this plot
+              # Type = ifelse(!is.na(y), "Actual", "Forecast")
+            ) %>%
+            dplyr::filter(!is.na(Value)) # Remove dates with neither actual nor forecast
+
+          # Calculate yearly sum
+          yearly_summary <- combined_df %>%
             dplyr::mutate(Year = factor(lubridate::year(ds))) %>%
             dplyr::group_by(Year) %>%
-            dplyr::summarise(Value = sum(yhat, na.rm = TRUE), .groups = 'drop')
+            dplyr::summarise(Value = sum(Value, na.rm = TRUE), .groups = 'drop')
+
+          return(yearly_summary)
         }
       )
 
       validate(need(nrow(all_yearly_summaries) > 0, "Could not generate yearly summary data from forecasts."))
 
-      # Define colors for models
-      n_models_plot <- length(unique(all_yearly_summaries$Model))
-      model_colors_yr <- RColorBrewer::brewer.pal(max(3, n_models_plot), "Set1") # Use a different palette maybe
+      # Add 'Actuals' data for comparison
+      actuals_yearly_summary <- history_df %>%
+        dplyr::mutate(Year = factor(lubridate::year(ds))) %>%
+        dplyr::group_by(Year) %>%
+        dplyr::summarise(Value = sum(y, na.rm = TRUE), .groups = 'drop') %>%
+        dplyr::mutate(Model = "Actuals") # Assign 'Actuals' model name
+
+      # Combine Actuals with forecast summaries
+      plot_data <- dplyr::bind_rows(actuals_yearly_summary, all_yearly_summaries) %>%
+        dplyr::arrange(Model, Year)
+
+      validate(need(nrow(plot_data) > 0, "No yearly data available to plot after processing."))
+
+      # Filter data to include only the current year
+      current_year <- as.character(lubridate::year(Sys.Date()))
+      plot_data_current_year <- plot_data %>%
+        dplyr::filter(Year == current_year)
+
+      validate(need(nrow(plot_data_current_year) > 0, paste("No data available for the current year (", current_year, ").", sep = "")))
+
+      # Define colors for models (including Actuals)
+      unique_models <- unique(plot_data_current_year$Model)
+      n_models_plot <- length(unique_models)
+
+      # Use a color palette, ensuring 'Actuals' has a distinct color (e.g., black or grey)
+      palette_name <- "Set1" # Choose a palette
+      model_colors_yr <- RColorBrewer::brewer.pal(max(3, n_models_plot), palette_name)
+      if (n_models_plot > length(model_colors_yr)) {
+         model_colors_yr <- rep(model_colors_yr, length.out = n_models_plot)
+      }
+      # Assign colors - specific color for Actuals, others from palette
+      model_color_map <- stats::setNames(model_colors_yr, unique_models)
+      model_color_map[["Actuals"]] <- "#000000" # Set Actuals to black
 
       # Create grouped bar chart
-      plot_ly(all_yearly_summaries, x = ~Year, y = ~Value, color = ~Model,
-              colors = model_colors_yr, # Apply palette
-              type = 'bar', barmode = 'group') %>%
-        layout(title = "Forecast Sum by Year (Test + Future Periods)",
-               yaxis = list(title = "Sum of Forecasted Values"),
-               xaxis = list(title = "Year", type = 'category'),
-               hovermode = "x unified")
+      plot_ly(plot_data_current_year, x = ~Model, y = ~Value, color = ~Model,
+              colors = model_color_map, # Apply color map
+              type = 'bar') %>%
+        layout(title = paste("Sum for Current Year (", current_year, ")", sep = ""),
+               yaxis = list(title = "Sum of Values"),
+               xaxis = list(title = "Model", type = 'category'), # X-axis is now Model
+               hovermode = "x unified",
+               legend = list(title=list(text='<b> Models </b>'))
+        )
     }) # End yearlyPlot
 
   })

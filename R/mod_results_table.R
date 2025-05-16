@@ -87,12 +87,12 @@ mod_results_table_server <- function(id, reactive_metrics_summary){
         metrics_formatted,
         rownames = FALSE,
         # caption = "Model Performance Metrics", # Caption can be added
-        filter = 'none', # No column filters
+        filter = 'top', # Add column filters at the top
         options = list(
           paging = FALSE, # No pagination
-          searching = FALSE, # No search box
+          searching = TRUE, # Enable searching for filters to work
           info = FALSE, # No "Showing X of Y entries"
-          ordering = FALSE, # No column sorting
+          ordering = TRUE, # No column sorting
           columnDefs = list(list(className = 'dt-center', targets = '_all')) # Center align text
         )
       ) %>%
