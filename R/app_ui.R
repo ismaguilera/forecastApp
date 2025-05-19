@@ -34,9 +34,23 @@ app_ui <- function(request) {
             # Placeholder for Data Input Module UI
             # tags$p("Placeholder for Data Upload controls (e.g., mod_data_input_ui)"),
             # tags$p("Placeholder for Column Selection controls"),
-            mod_data_input_ui("data_input_1") # Module UI would go here
-          ), # End sidebar
+            mod_data_input_ui("data_input_1"), # Module UI would go here
+
+            hr(), # Separator
+            h5("Load Holidays (Optional)"), # Section title
+            fileInput("global_holidays_file", "Upload Global Holidays File (CSV: ds, holiday)",
+                      multiple = FALSE,
+                      accept = c(".csv", "text/csv", "text/comma-separated-values,text/plain")),
+            actionButton("load_default_holidays", "Load Default Holidays", icon = icon("calendar-check"), class="btn-sm") # Add button
+
+          ),
           # Main content for Data panel
+          bslib::card(
+            bslib::card_body(
+              h4("Global Holidays Data (Preview)"),
+              verbatimTextOutput("global_holidays_preview")
+            )
+          ),
           bslib::accordion(
             open = c("Preprocessing & Split","Time Series Decomposition"),
             bslib::accordion_panel(

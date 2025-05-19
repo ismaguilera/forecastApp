@@ -8,6 +8,7 @@
 #' @import shinyjs
 mod_model_config_ui <- function(id){
   ns <- NS(id)
+  default_horizon <- get_golem_config("forecast_horizon_default") # Returns 150 by default
   tagList(
     useShinyjs(), # Initialize shinyjs
     h4("Model Configuration"),
@@ -23,7 +24,7 @@ mod_model_config_ui <- function(id){
         checkboxInput(ns("use_gam"), "GAM", value = TRUE),
         checkboxInput(ns("use_rf"), "Random Forest", value = TRUE),
         hr(),
-        numericInput(ns("forecastHorizon"), "Forecast Horizon (Periods):", value = 52, min = 1, max = 365),
+        numericInput(ns("forecastHorizon"), "Forecast Horizon (Periods):", value = default_horizon, min = 1, step = 1, max = 365),
         actionButton(ns("runForecast"), "Run Forecast", icon = icon("play-circle"), class = "btn-primary btn-block")
       ),
       mainPanel(
@@ -84,8 +85,8 @@ mod_model_config_ui <- function(id){
               numericInput(ns("prophet_capacity"), "Capacity (Cap for Logistic Growth):", value = 100000)
             ),
             numericInput(ns("prophet_changepoint_scale"), "Changepoint Prior Scale:", value = 0.05, min = 0.001, max = 0.5, step = 0.01),
-            actionButton(ns("load_chile_holidays"), "Load Default Holidays (Chile)", icon = icon("calendar-check")),
-            fileInput(ns("prophet_holidays_file"), "Upload Custom Holidays CSV (optional, cols: holiday, ds, [lower_window, upper_window])", accept = ".csv"),
+            # actionButton(ns("load_chile_holidays"), "Load Default Holidays (Chile)", icon = icon("calendar-check")),
+            # fileInput(ns("prophet_holidays_file"), "Upload Custom Holidays CSV (optional, cols: holiday, ds, [lower_window, upper_window])", accept = ".csv"),
             fileInput(ns("prophet_regressors_file"), "Upload External Regressors CSV (optional, cols: ds, regressor1, ...)", accept = ".csv")
           ),
           # XGBoost Panel

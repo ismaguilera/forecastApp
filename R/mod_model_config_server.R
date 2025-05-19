@@ -52,20 +52,20 @@ mod_model_config_server <- function(id) {
         # Construct the path relative to the app's root directory
         # Assumes feriados.csv is in inst/extdata/
         # Correct path for golem app structure when running from dev/run_dev.R or deployed
-        holidays_path <- app_sys("extdata", "feriados.csv") 
-        
+        holidays_path <- app_sys("extdata", "feriados.csv")
+
         if (file.exists(holidays_path)) {
           df <- read.csv(holidays_path, fileEncoding="UTF-8-BOM") # Added encoding just in case
           # Rename columns to 'ds' and 'holiday'
           if ("Fecha" %in% names(df) && "Feriados_chilenos" %in% names(df)) {
-            df <- df %>% 
+            df <- df %>%
               dplyr::rename(ds = Fecha, holiday = Feriados_chilenos) %>%
               dplyr::mutate(ds = as.Date(ds)) %>%
               dplyr::select(ds, holiday) # Keep only these two
           } else {
             stop("Default holidays file must contain 'Fecha' and 'Feriados_chilenos' columns.")
           }
-          
+
           # Ensure 'ds' column is Date type after renaming
           if (!inherits(df$ds, "Date")) {
              stop("'ds' column in default holidays could not be coerced to Date.")
@@ -85,7 +85,7 @@ mod_model_config_server <- function(id) {
         default_holidays_data(NULL)
       })
     })
-    
+
     # --- Return a list of reactive expressions for all inputs ---
     return(
       list(
@@ -97,7 +97,7 @@ mod_model_config_server <- function(id) {
         use_xgboost = reactive(input$use_xgboost),
         use_gam = reactive(input$use_gam),
         use_rf = reactive(input$use_rf),
-        
+
         # General
         forecast_horizon = reactive(input$forecastHorizon),
         active_tab = reactive(input$modelTabs), # To know which model's params are active
@@ -133,7 +133,22 @@ mod_model_config_server <- function(id) {
           if (!is.null(input$prophet_holidays_file) && !is.null(input$prophet_holidays_file$datapath)) {
             message("Using uploaded custom holidays file.")
             default_holidays_data(NULL) # Clear default if custom is uploaded
-            return(tryCatch({ read.csv(input$prophet_holidays_file$datapath) }, error = function(e) NULL))
+            tryCatch({
+              df <- read.csv(input$prophet_holidays_file$datapath, sep = ",", fileEncoding = "UTF-8")
+              # Rename columns to 'ds' and 'holiday'
+              if ("Fecha" %in% names(df) && "Feriados_chilenos" %in% names(df)) {
+                df <- df %>%
+                  dplyr::rename(ds = Fecha, holiday = Feriados_chilenos) %>%
+                  dplyr::mutate(ds = as.Date(ds)) %>%
+                  dplyr::select(ds, holiday) # Keep only these two
+              } else {
+                stop("El archivo de feriados debe contener las columnas 'Fecha' y 'Feriados_chilenos'.")
+              }
+              return(df)
+            }, error = function(e) {
+              showNotification(paste("Error al leer el archivo de feriados:", conditionMessage(e)), type = "error", duration = 10)
+              return(NULL)
+            })
           } else if (!is.null(default_holidays_data())) {
             message("Using default holidays data.")
             return(default_holidays_data())
