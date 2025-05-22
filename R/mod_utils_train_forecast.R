@@ -1844,39 +1844,50 @@ train_gam <- function(train_df, config, holidays_df = NULL) {
     message("Preparing features for GAM...")
     feature_df <- prepare_gam_features(train_df)
 
-    holiday_col_name <- "is_holiday" # Nombre de la nueva columna de feriado
-    # Asegurar que holiday_col_name no exista ya, o usar un nombre único
+    holiday_col_name <- "is_holiday"
+    all_holiday_names <- character(0) # Initialize as empty character vector
+
+    if (!is.null(holidays_df) && nrow(holidays_df) > 0 && all(c("ds", "holiday") %in% names(holidays_df))) {
+      all_holiday_names <- unique(as.character(holidays_df$holiday))
+      # Filter out any NA or empty string holiday names if they exist
+      all_holiday_names <- all_holiday_names[!is.na(all_holiday_names) & all_holiday_names != ""]
+    }
+
+    # Define complete holiday levels
+    holiday_levels <- c("NoHoliday", all_holiday_names)
+    # Ensure "NoHoliday" is first and unique
+    holiday_levels <- unique(holiday_levels) 
+    message(paste("GAM: Defined holiday levels:", paste(holiday_levels, collapse=", ")))
+
     if (!is.null(holidays_df) && nrow(holidays_df) > 0 &&
         all(c("ds", "holiday") %in% names(holidays_df))) {
 
       holidays_for_gam <- holidays_df %>%
-        dplyr::mutate(ds = as.Date(ds), {{holiday_col_name}} := factor(holiday)) %>% # Crear factor con nombres de feriados
-        # O simplemente una dummy: {{holiday_col_name}} := 1
-        dplyr::distinct(ds, .keep_all = TRUE) # Asegurar una entrada por día si hay múltiples feriados con el mismo nombre en un día
+        dplyr::mutate(ds = as.Date(ds)) %>%
+        # Create the factor using the predefined holiday_levels
+        dplyr::mutate({{holiday_col_name}} := factor(holiday, levels = holiday_levels)) %>%
+        dplyr::distinct(ds, .keep_all = TRUE)
 
       feature_df <- feature_df %>%
         dplyr::left_join(holidays_for_gam %>% dplyr::select(ds, all_of(holiday_col_name)), by = "ds")
 
-      # Si se usó dummy (:= 1), rellenar NAs con 0. Si es factor, NAs se manejarán por GAM o se pueden convertir a un nivel específico.
-      # Para factor, podríamos convertir NA a un nivel como "NoHoliday"
-      if (is.factor(feature_df[[holiday_col_name]])) {
-        feature_df[[holiday_col_name]] <- factor(feature_df[[holiday_col_name]],
-                                                 levels = c(levels(feature_df[[holiday_col_name]]), "NoHoliday"))
+      # Convert NAs (days that are not holidays) to "NoHoliday" level
+      # This also handles cases where a holiday name in data might not be in holiday_levels (though less likely now)
+      if (holiday_col_name %in% names(feature_df) && is.factor(feature_df[[holiday_col_name]])) {
         feature_df[[holiday_col_name]][is.na(feature_df[[holiday_col_name]])] <- "NoHoliday"
-        message("GAM: Added holiday factor column '", holiday_col_name, "' with levels.")
+        message("GAM: Added holiday factor column '", holiday_col_name, "' and processed NAs to 'NoHoliday'.")
+      } else {
+         # This case should ideally not be reached if holiday_col_name is correctly created
+        warning(paste("GAM: Holiday column '", holiday_col_name, "' not found as factor after join or creation. Initializing as 'NoHoliday' factor."))
+        feature_df[[holiday_col_name]] <- factor("NoHoliday", levels = holiday_levels)
       }
-      # Si se usó dummy (:= 1)
-      # feature_df[[holiday_col_name]][is.na(feature_df[[holiday_col_name]])] <- 0
-
-
     } else {
-      # Crear la columna con un valor por defecto si no hay feriados o el df es inválido
-      # Esto es importante para que la fórmula no falle si el término está presente.
-      feature_df[[holiday_col_name]] <- factor("NoHoliday", levels = c("NoHoliday")) # Factor con un solo nivel
-      # Si se usó dummy: feature_df[[holiday_col_name]] <- 0
+      # If no holidays_df, create the column with "NoHoliday" using the defined levels
+      feature_df[[holiday_col_name]] <- factor("NoHoliday", levels = holiday_levels)
       if (!is.null(holidays_df) && nrow(holidays_df) > 0) {
-        warning("train_gam: holidays_df provided but missing 'ds'/'holiday' or empty after processing.")
+        warning("train_gam: holidays_df provided but missing 'ds'/'holiday' or empty after processing. Using 'NoHoliday'.")
       }
+       message("GAM: No holidays processed. '", holiday_col_name, "' column initialized with 'NoHoliday'.")
     }
 
     # --- DEBUG: Check feature_df ---
@@ -1968,6 +1979,11 @@ train_gam <- function(train_df, config, holidays_df = NULL) {
     # Fit the model
     model <- mgcv::gam(gam_formula, data = feature_df, method = "REML") # REML often preferred
 
+    if (!is.null(model)) {
+      attr(model, "holiday_levels") <- holiday_levels
+      message("GAM: Stored 'holiday_levels' attribute in the model object.")
+    }
+
     message("gam() finished.")
     # print(summary(model)) # Optional: print summary
 
@@ -2016,57 +2032,51 @@ forecast_gam <- function(model, train_df, total_periods_needed, freq_str = "day"
 
     future_df <- tibble::tibble(ds = future_dates) %>%
       dplyr::mutate(time_index = seq(from = last_time_index + 1, length.out = total_periods_needed)) %>%
-      # Re-create date components needed by the fitted model formula
-      # (Need to match features used in train_gam EXACTLY)
       dplyr::mutate(
-        # year = lubridate::year(ds), # Only if used in formula
-        # month = factor(lubridate::month(ds, label = TRUE)), # Only if used
-        # week = lubridate::week(ds), # Only if used
-        yday = lubridate::yday(ds), # If s(yday) used
-        wday = factor(lubridate::wday(ds, label = TRUE, week_start = 1), # If s(wday) or wday used
-                      levels = levels(prepare_gam_features(train_df)$wday)) # Ensure factor levels match training data!
+        yday = lubridate::yday(ds),
+        wday = factor(lubridate::wday(ds, label = TRUE, week_start = 1),
+                      levels = levels(prepare_gam_features(train_df)$wday))
       )
-    # Add future values for regressors here if implemented later
-    holiday_col_name_gam <- "is_holiday" # Debe coincidir con el nombre usado en train_gam
+
+    holiday_col_name_gam <- "is_holiday"
+    retrieved_holiday_levels <- attr(model, "holiday_levels")
+
+    if (is.null(retrieved_holiday_levels)) {
+      warning("GAM Forecast: 'holiday_levels' attribute not found in model. Attempting to derive from holidays_df.")
+      # Fallback: derive levels from holidays_df (less robust if holidays_df changes)
+      all_holiday_names_fcst <- character(0)
+      if (!is.null(holidays_df) && nrow(holidays_df) > 0 && all(c("ds", "holiday") %in% names(holidays_df))) {
+        all_holiday_names_fcst <- unique(as.character(holidays_df$holiday))
+        all_holiday_names_fcst <- all_holiday_names_fcst[!is.na(all_holiday_names_fcst) & all_holiday_names_fcst != ""]
+      }
+      retrieved_holiday_levels <- unique(c("NoHoliday", all_holiday_names_fcst))
+    }
+    message(paste("GAM Forecast: Using holiday levels:", paste(retrieved_holiday_levels, collapse=", ")))
 
     if (!is.null(holidays_df) && nrow(holidays_df) > 0 &&
         all(c("ds", "holiday") %in% names(holidays_df))) {
 
         holidays_for_gam_fcst <- holidays_df %>%
-          dplyr::mutate(ds = as.Date(ds), {{holiday_col_name_gam}} := factor(holiday)) %>%
+          dplyr::mutate(ds = as.Date(ds)) %>%
+          # Use retrieved_holiday_levels for factor creation
+          dplyr::mutate({{holiday_col_name_gam}} := factor(holiday, levels = retrieved_holiday_levels)) %>%
           dplyr::distinct(ds, .keep_all = TRUE)
 
         future_df <- future_df %>%
           dplyr::left_join(holidays_for_gam_fcst %>% dplyr::select(ds, all_of(holiday_col_name_gam)), by = "ds")
 
-        # Coincidir niveles con los datos de entrenamiento (crucial si es factor)
-        # Asumimos que 'model$data' o 'train_df' (usado para entrenar) tiene la columna de feriados con los niveles correctos
-        # Esta parte es delicada y depende de cómo se almacenaron/accedieron los niveles originales.
-        # Una forma más robusta sería extraer los niveles del objeto 'model' si GAM los guarda,
-        # o pasarlos explícitamente.
-        # Por ahora, crearemos los niveles a partir de los feriados proporcionados más "NoHoliday".
-        original_holiday_levels <- character(0)
-        if(!is.null(train_df[[holiday_col_name_gam]])) { # Si la columna existía en el df de entrenamiento original (después de la preparación)
-            original_holiday_levels <- levels(train_df[[holiday_col_name_gam]])
-        } else { # Si no, construir desde holidays_df
-             original_holiday_levels <- unique(c(as.character(holidays_for_gam_fcst[[holiday_col_name_gam]]), "NoHoliday"))
+        if (holiday_col_name_gam %in% names(future_df) && is.factor(future_df[[holiday_col_name_gam]])) {
+            # Convert NAs (days that are not holidays or holidays not in retrieved_holiday_levels) to "NoHoliday"
+            future_df[[holiday_col_name_gam]][is.na(future_df[[holiday_col_name_gam]])] <- "NoHoliday"
+            message("GAM Forecast: Processed holiday column in future_df, NAs set to 'NoHoliday'.")
+        } else {
+            warning(paste("GAM Forecast: Holiday column '", holiday_col_name_gam, "' not found as factor after join. Initializing."))
+            future_df[[holiday_col_name_gam]] <- factor("NoHoliday", levels = retrieved_holiday_levels)
         }
-
-
-        future_df[[holiday_col_name_gam]] <- factor(future_df[[holiday_col_name_gam]], levels = original_holiday_levels)
-        future_df[[holiday_col_name_gam]][is.na(future_df[[holiday_col_name_gam]])] <- "NoHoliday"
-
     } else {
-        # Asegurar que la columna existe con el nivel "NoHoliday" si no hay feriados
-         original_holiday_levels_default <- "NoHoliday"
-         if(!is.null(train_df[[holiday_col_name_gam]])) {
-             if ("NoHoliday" %in% levels(train_df[[holiday_col_name_gam]])) {
-                original_holiday_levels_default <- levels(train_df[[holiday_col_name_gam]])
-             } else {
-                original_holiday_levels_default <- c(levels(train_df[[holiday_col_name_gam]]), "NoHoliday")
-             }
-         }
-        future_df[[holiday_col_name_gam]] <- factor("NoHoliday", levels = original_holiday_levels_default)
+      # If no holidays_df for forecast period, or it's invalid, create the column with "NoHoliday"
+      future_df[[holiday_col_name_gam]] <- factor("NoHoliday", levels = retrieved_holiday_levels)
+      message("GAM Forecast: No future holidays processed. '", holiday_col_name_gam, "' column initialized with 'NoHoliday'.")
     }
     # --- End Create Future Dataframe ---
     message(paste("Created future dataframe for prediction. Dims:", paste(dim(future_df), collapse=" x ")))
@@ -2122,9 +2132,40 @@ forecast_gam <- function(model, train_df, total_periods_needed, freq_str = "day"
 
     # --- Get Fitted Values ---
     message("Getting GAM fitted values...")
-    # Predict on training features (already includes date components)
-    # It's often safer to regenerate training features to ensure consistency
+    # Regenerate training features including the holiday column with consistent levels
     train_feature_df <- prepare_gam_features(train_df)
+
+    # Add holiday column to train_feature_df consistent with how it was done in train_gam
+    # This requires access to the same holiday_levels used during training (retrieved from model)
+    if (!is.null(holidays_df) && nrow(holidays_df) > 0 && all(c("ds", "holiday") %in% names(holidays_df))) {
+        holidays_for_gam_train_fitted <- holidays_df %>%
+            dplyr::mutate(ds = as.Date(ds)) %>%
+            dplyr::mutate({{holiday_col_name_gam}} := factor(holiday, levels = retrieved_holiday_levels)) %>%
+            dplyr::distinct(ds, .keep_all = TRUE)
+        
+        train_feature_df <- train_feature_df %>%
+            dplyr::left_join(holidays_for_gam_train_fitted %>% dplyr::select(ds, all_of(holiday_col_name_gam)), by = "ds")
+        
+        if (holiday_col_name_gam %in% names(train_feature_df) && is.factor(train_feature_df[[holiday_col_name_gam]])) {
+            train_feature_df[[holiday_col_name_gam]][is.na(train_feature_df[[holiday_col_name_gam]])] <- "NoHoliday"
+        } else {
+            train_feature_df[[holiday_col_name_gam]] <- factor("NoHoliday", levels = retrieved_holiday_levels)
+        }
+    } else {
+        train_feature_df[[holiday_col_name_gam]] <- factor("NoHoliday", levels = retrieved_holiday_levels)
+    }
+    
+    # Ensure all necessary columns are present for prediction
+    required_cols <- all.vars(model$formula) # Get variables from formula
+    missing_cols_train_fitted <- setdiff(required_cols, names(train_feature_df))
+    if(length(missing_cols_train_fitted) > 0 && !"y" %in% missing_cols_train_fitted) { # 'y' will be missing, that's ok
+        # Attempt to add missing columns as NA or default if simple (e.g. time_index if somehow missed)
+        # This part might need more robust handling depending on what could be missing.
+        # For now, warn and proceed; GAM might handle some NAs in predictors depending on formula.
+        warning(paste("GAM Fitted: Columns missing from regenerated training features for fitted values:", paste(missing_cols_train_fitted, collapse=", "), ". This might cause predict() to fail for fitted values."))
+    }
+
+
     fitted_vals <- predict(model, newdata = train_feature_df, type = "response")
     message("GAM fitted values obtained.")
     # --- End Fitted Values ---
