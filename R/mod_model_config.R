@@ -546,38 +546,38 @@ mod_model_config_server <- function(id){
       })
     })
     # --- Observe UPLOAD file input change ---
-    observeEvent(input$prophet_holidays_file, {
-      message("Holiday file uploaded.") # Log
-      inFile <- input$prophet_holidays_file
-      # Need req here because observeEvent triggers on reset too
-      req(inFile, inFile$datapath)
-      df_processed <- NULL
+    # observeEvent(input$prophet_holidays_file, {
+    #   message("Holiday file uploaded.") # Log
+    #   inFile <- input$prophet_holidays_file
+    #   # Need req here because observeEvent triggers on reset too
+    #   req(inFile, inFile$datapath)
+    #   df_processed <- NULL
 
-      tryCatch({
-        # --- Load and Process Uploaded Holidays ---
-        df <- utils::read.csv(inFile$datapath, stringsAsFactors = FALSE, header = TRUE)
-        message("Uploaded holiday file read.")
-        # --- Minimal Processing ---
-        if (is.null(df) || ncol(df) < 2 || nrow(df) == 0) stop("Uploaded holiday data is invalid.")
-        df_processed <- tibble::tibble( ds = lubridate::as_date(df[[1]]), holiday = as.character(df[[2]]) )
-        if(anyNA(df_processed$ds) || anyNA(df_processed$holiday)) stop("NAs found/generated in uploaded holidays.")
-        # if (ncol(df) >= 3 && is.numeric(df[[3]])) { df_processed$lower_window <- as.integer(df[[3]]) }
-        # if (ncol(df) >= 4 && is.numeric(df[[4]])) { df_processed$upper_window <- as.integer(df[[4]]) }
-        message("Uploaded holidays processed minimally.")
-        # --- End Processing ---
+    #   tryCatch({
+    #     # --- Load and Process Uploaded Holidays ---
+    #     df <- utils::read.csv(inFile$datapath, stringsAsFactors = FALSE, header = TRUE)
+    #     message("Uploaded holiday file read.")
+    #     # --- Minimal Processing ---
+    #     if (is.null(df) || ncol(df) < 2 || nrow(df) == 0) stop("Uploaded holiday data is invalid.")
+    #     df_processed <- tibble::tibble( ds = lubridate::as_date(df[[1]]), holiday = as.character(df[[2]]) )
+    #     if(anyNA(df_processed$ds) || anyNA(df_processed$holiday)) stop("NAs found/generated in uploaded holidays.")
+    #     # if (ncol(df) >= 3 && is.numeric(df[[3]])) { df_processed$lower_window <- as.integer(df[[3]]) }
+    #     # if (ncol(df) >= 4 && is.numeric(df[[4]])) { df_processed$upper_window <- as.integer(df[[4]]) }
+    #     message("Uploaded holidays processed minimally.")
+    #     # --- End Processing ---
 
-        # --- SUCCESS: Update reactiveVal and Notify ---
-        processed_holidays_rv(df_processed) # STORE the processed data
-        shiny::showNotification( # SHOW notification immediately
-          paste("Uploaded holidays file ('", inFile$name ,"') processed successfully."),
-          type = "message", duration = 5
-        )
+    #     # --- SUCCESS: Update reactiveVal and Notify ---
+    #     processed_holidays_rv(df_processed) # STORE the processed data
+    #     shiny::showNotification( # SHOW notification immediately
+    #       paste("Uploaded holidays file ('", inFile$name ,"') processed successfully."),
+    #       type = "message", duration = 5
+    #     )
 
-      }, error = function(e) {
-        processed_holidays_rv(NULL) # Reset stored data on error
-        shiny::showNotification(paste("Error processing uploaded holidays file:", e$message), type = "error", duration=10)
-      })
-    }) # End observeEvent prophet_holidays_file
+    #   }, error = function(e) {
+    #     processed_holidays_rv(NULL) # Reset stored data on error
+    #     shiny::showNotification(paste("Error processing uploaded holidays file:", e$message), type = "error", duration=10)
+    #   })
+    # }) # End observeEvent prophet_holidays_file
 
     # --- ObserveEvent for Regressor Upload ---
     observeEvent(input$prophet_regressors_file, {

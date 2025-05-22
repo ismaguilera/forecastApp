@@ -13,11 +13,11 @@
 #'
 #' @noRd
 #'
-#' @import forecast dplyr tibble lubridate
+#' @import forecast dplyr tibble lubridate tidyr
 #' @importFrom stats ts frequency start fitted cycle time
 #' @importFrom lubridate year yday weeks
 #' @importFrom rlang %||%
-train_arima <- function(train_df, config, aggregation_level) {
+train_arima <- function(train_df, config, aggregation_level, holidays_df = NULL) {
   message("Starting train_arima")
   # Basic validation
   if (!is.data.frame(train_df) || !all(c("ds", "y") %in% names(train_df))) {
@@ -31,6 +31,51 @@ train_arima <- function(train_df, config, aggregation_level) {
     warning("Unknown aggregation level provided to train_arima. Seasonality might be incorrect.")
     # Defaulting to non-seasonal or handle differently? Let's default freq to 1.
     aggregation_level <- "Unknown" # Mark as unknown
+  }
+
+  xreg_matrix_train <- NULL
+  if (!is.null(holidays_df) && nrow(holidays_df) > 0 &&
+      all(c("ds", "holiday") %in% names(holidays_df))) {
+
+    # Filtrar feriados dentro del rango de train_df
+    holidays_in_train_range <- holidays_df %>%
+      dplyr::mutate(ds = as.Date(ds)) %>%
+      dplyr::filter(ds >= min(train_df$ds) & ds <= max(train_df$ds))
+
+    if (nrow(holidays_in_train_range) > 0) {
+      message("ARIMA: Processing ", nrow(holidays_in_train_range), " holidays for xreg.")
+      # Crear variables dummy para cada feriado
+      # Asegurarse de que los nombres de las columnas sean válidos para R
+      holiday_dummies_train <- holidays_in_train_range %>%
+        dplyr::mutate(holiday = make.names(holiday), value = 1) %>% # make.names para asegurar nombres válidos
+        tidyr::pivot_wider(names_from = holiday, values_from = value, values_fill = 0)
+
+      # Unir con train_df para asegurar todas las fechas y el orden correcto
+      # y luego seleccionar solo las columnas dummy
+      temp_train_df_with_dummies <- train_df %>%
+        dplyr::select(ds) %>%
+        dplyr::left_join(holiday_dummies_train, by = "ds") %>%
+        dplyr::arrange(ds)
+
+      # Seleccionar solo las columnas de feriados (excluir 'ds')
+      # y rellenar NAs (para días no feriados o feriados no presentes en el subconjunto) con 0
+      xreg_candidates <- temp_train_df_with_dummies %>% dplyr::select(-ds)
+      xreg_candidates[is.na(xreg_candidates)] <- 0
+
+      if (ncol(xreg_candidates) > 0) {
+        xreg_matrix_train <- as.matrix(xreg_candidates)
+        # Guardar los nombres de las columnas de regresores para el pronóstico
+        # Esto es crucial si se van a necesitar los mismos regresores para el futuro
+        # Podrías almacenar attr(xreg_matrix_train, "holiday_names") <- colnames(xreg_matrix_train)
+        # O devolverlo junto con el modelo.
+      } else {
+        message("ARIMA: No holiday regressors created after processing.")
+      }
+    } else {
+      message("ARIMA: No holidays found within the training data range.")
+    }
+  } else if (!is.null(holidays_df) && nrow(holidays_df) > 0) {
+    warning("train_arima: holidays_df provided but missing 'ds' or 'holiday' columns.")
   }
 
   # Determine frequency based on period if seasonal, otherwise try to infer
@@ -124,7 +169,8 @@ train_arima <- function(train_df, config, aggregation_level) {
       model <- forecast::auto.arima(y_ts,
                                     seasonal = config$seasonal, # Pass TRUE/FALSE correctly
                                     # Add other auto.arima args if desired
-                                    stepwise = TRUE, approximation = TRUE, trace = FALSE )
+                                    stepwise = TRUE, approximation = TRUE, trace = FALSE,
+                                    xreg = xreg_matrix_train) # AÑADIDO xreg
       message("auto.arima finished.")
       message("ARIMA model fitted successfully.") # Added success message
     } else {
@@ -132,7 +178,8 @@ train_arima <- function(train_df, config, aggregation_level) {
       seasonal_list <- if(config$seasonal) list(order = c(config$P, config$D, config$Q), period = freq) else FALSE
       model <- forecast::Arima(y_ts,
                                order = c(config$p, config$d, config$q),
-                               seasonal = seasonal_list)
+                               seasonal = seasonal_list,
+                               xreg = xreg_matrix_train) # AÑADIDO xreg
       message("Manual Arima finished.")
       message("ARIMA model fitted successfully.") # Added success message
     }
@@ -180,7 +227,7 @@ train_arima <- function(train_df, config, aggregation_level) {
 #' @import dplyr
 #' @import tibble
 #' @importFrom stats time frequency cycle
-forecast_arima <- function(model, total_periods_needed, train_end_date, freq_str = "day") {
+forecast_arima <- function(model, total_periods_needed, train_end_date, freq_str = "day", future_xreg = NULL) {
   if (is.null(model) || !inherits(model, c("ARIMA", "forecast_ARIMA"))) {
     message("Starting forecast_arima - Invalid model")
     warning("Invalid ARIMA model object provided. Returning NULL.")
@@ -190,11 +237,22 @@ forecast_arima <- function(model, total_periods_needed, train_end_date, freq_str
     warning("Invalid horizon provided. Returning NULL.")
     return(NULL)
   }
+  if (!is.null(model$xreg) && is.null(future_xreg)) {
+    warning("ARIMA model was trained with xreg, but future_xreg not provided for forecast. Predictions may be unreliable or fail.")
+    # Podrías optar por detenerse: stop("future_xreg required for this ARIMA model.")
+  }
+  
+  if (!is.null(model$xreg) && !is.null(future_xreg) && ncol(model$xreg) != ncol(future_xreg)) {
+    stop(paste0("Mismatch in xreg columns for forecast. Model: ", ncol(model$xreg), ", Future: ", ncol(future_xreg)))
+  }
+  if (!is.null(future_xreg) && nrow(future_xreg) != total_periods_needed) {
+      stop(paste0("Number of rows in future_xreg (", nrow(future_xreg), ") does not match total_periods_needed (", total_periods_needed, ")."))
+  }
 
   message("Starting forecast_arima")
   fcst <- NULL
   tryCatch({
-    fcst <- forecast::forecast(model, h = total_periods_needed, level = c(80, 95))
+    fcst <- forecast::forecast(model, h = total_periods_needed, level = c(80, 95), xreg = future_xreg)
   }, error = function(e) {
     warning(paste("ARIMA forecast generation failed:", e$message))
     fcst <<- NULL
@@ -1634,7 +1692,7 @@ prepare_gam_features <- function(df) {
 #' @return A fitted GAM model object (from mgcv package). Returns NULL on error.
 #' @noRd
 #' @import mgcv dplyr
-train_gam <- function(train_df, config) {
+train_gam <- function(train_df, config, holidays_df = NULL) {
   # Basic validation
   if (!is.data.frame(train_df) || !all(c("ds", "y") %in% names(train_df)) || nrow(train_df) < 10) {
     warning("train_df for GAM invalid or too short. Need >= 10 rows.")
@@ -1645,6 +1703,41 @@ train_gam <- function(train_df, config) {
   tryCatch({
     message("Preparing features for GAM...")
     feature_df <- prepare_gam_features(train_df)
+
+    holiday_col_name <- "is_holiday" # Nombre de la nueva columna de feriado
+    # Asegurar que holiday_col_name no exista ya, o usar un nombre único
+    if (!is.null(holidays_df) && nrow(holidays_df) > 0 &&
+        all(c("ds", "holiday") %in% names(holidays_df))) {
+
+      holidays_for_gam <- holidays_df %>%
+        dplyr::mutate(ds = as.Date(ds), {{holiday_col_name}} := factor(holiday)) %>% # Crear factor con nombres de feriados
+        # O simplemente una dummy: {{holiday_col_name}} := 1
+        dplyr::distinct(ds, .keep_all = TRUE) # Asegurar una entrada por día si hay múltiples feriados con el mismo nombre en un día
+
+      feature_df <- feature_df %>%
+        dplyr::left_join(holidays_for_gam %>% dplyr::select(ds, all_of(holiday_col_name)), by = "ds")
+
+      # Si se usó dummy (:= 1), rellenar NAs con 0. Si es factor, NAs se manejarán por GAM o se pueden convertir a un nivel específico.
+      # Para factor, podríamos convertir NA a un nivel como "NoHoliday"
+      if (is.factor(feature_df[[holiday_col_name]])) {
+        feature_df[[holiday_col_name]] <- factor(feature_df[[holiday_col_name]],
+                                                 levels = c(levels(feature_df[[holiday_col_name]]), "NoHoliday"))
+        feature_df[[holiday_col_name]][is.na(feature_df[[holiday_col_name]])] <- "NoHoliday"
+        message("GAM: Added holiday factor column '", holiday_col_name, "' with levels.")
+      }
+      # Si se usó dummy (:= 1)
+      # feature_df[[holiday_col_name]][is.na(feature_df[[holiday_col_name]])] <- 0
+
+
+    } else {
+      # Crear la columna con un valor por defecto si no hay feriados o el df es inválido
+      # Esto es importante para que la fórmula no falle si el término está presente.
+      feature_df[[holiday_col_name]] <- factor("NoHoliday", levels = c("NoHoliday")) # Factor con un solo nivel
+      # Si se usó dummy: feature_df[[holiday_col_name]] <- 0
+      if (!is.null(holidays_df) && nrow(holidays_df) > 0) {
+        warning("train_gam: holidays_df provided but missing 'ds'/'holiday' or empty after processing.")
+      }
+    }
 
     # --- DEBUG: Check feature_df ---
     message("Summary of feature_df prepared for GAM:")
@@ -1709,6 +1802,11 @@ train_gam <- function(train_df, config) {
         }
     }
 
+    if (holiday_col_name %in% names(feature_df)) {
+      formula_str <- paste(formula_str, "+", holiday_col_name)
+      message(paste("  + Added holiday term:", holiday_col_name))
+    }
+
     # # Seasonal terms (using cyclic cubic splines 'cc')
     # if (config$use_season_w && length(unique(feature_df$wday)) > 1) { # Check if wday varies
     #   # Check if enough unique days for default k (~4)
@@ -1758,7 +1856,7 @@ train_gam <- function(train_df, config) {
 #' @return A list containing `$forecast` (tibble) and `$fitted` (vector). Returns NULL on error.
 #' @noRd
 #' @import mgcv dplyr tibble lubridate stats
-forecast_gam <- function(model, train_df, total_periods_needed, freq_str = "day", config) {
+forecast_gam <- function(model, train_df, total_periods_needed, freq_str = "day", config, holidays_df = NULL) {
   # Basic validation
   if (is.null(model) || !inherits(model, "gam")) { return(NULL) }
   # ... other validation ...
@@ -1789,6 +1887,47 @@ forecast_gam <- function(model, train_df, total_periods_needed, freq_str = "day"
                       levels = levels(prepare_gam_features(train_df)$wday)) # Ensure factor levels match training data!
       )
     # Add future values for regressors here if implemented later
+    holiday_col_name_gam <- "is_holiday" # Debe coincidir con el nombre usado en train_gam
+
+    if (!is.null(holidays_df) && nrow(holidays_df) > 0 &&
+        all(c("ds", "holiday") %in% names(holidays_df))) {
+
+        holidays_for_gam_fcst <- holidays_df %>%
+          dplyr::mutate(ds = as.Date(ds), {{holiday_col_name_gam}} := factor(holiday)) %>%
+          dplyr::distinct(ds, .keep_all = TRUE)
+
+        future_df <- future_df %>%
+          dplyr::left_join(holidays_for_gam_fcst %>% dplyr::select(ds, all_of(holiday_col_name_gam)), by = "ds")
+
+        # Coincidir niveles con los datos de entrenamiento (crucial si es factor)
+        # Asumimos que 'model$data' o 'train_df' (usado para entrenar) tiene la columna de feriados con los niveles correctos
+        # Esta parte es delicada y depende de cómo se almacenaron/accedieron los niveles originales.
+        # Una forma más robusta sería extraer los niveles del objeto 'model' si GAM los guarda,
+        # o pasarlos explícitamente.
+        # Por ahora, crearemos los niveles a partir de los feriados proporcionados más "NoHoliday".
+        original_holiday_levels <- character(0)
+        if(!is.null(train_df[[holiday_col_name_gam]])) { # Si la columna existía en el df de entrenamiento original (después de la preparación)
+            original_holiday_levels <- levels(train_df[[holiday_col_name_gam]])
+        } else { # Si no, construir desde holidays_df
+             original_holiday_levels <- unique(c(as.character(holidays_for_gam_fcst[[holiday_col_name_gam]]), "NoHoliday"))
+        }
+
+
+        future_df[[holiday_col_name_gam]] <- factor(future_df[[holiday_col_name_gam]], levels = original_holiday_levels)
+        future_df[[holiday_col_name_gam]][is.na(future_df[[holiday_col_name_gam]])] <- "NoHoliday"
+
+    } else {
+        # Asegurar que la columna existe con el nivel "NoHoliday" si no hay feriados
+         original_holiday_levels_default <- "NoHoliday"
+         if(!is.null(train_df[[holiday_col_name_gam]])) {
+             if ("NoHoliday" %in% levels(train_df[[holiday_col_name_gam]])) {
+                original_holiday_levels_default <- levels(train_df[[holiday_col_name_gam]])
+             } else {
+                original_holiday_levels_default <- c(levels(train_df[[holiday_col_name_gam]]), "NoHoliday")
+             }
+         }
+        future_df[[holiday_col_name_gam]] <- factor("NoHoliday", levels = original_holiday_levels_default)
+    }
     # --- End Create Future Dataframe ---
     message(paste("Created future dataframe for prediction. Dims:", paste(dim(future_df), collapse=" x ")))
 

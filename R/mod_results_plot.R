@@ -39,7 +39,7 @@ mod_results_plot_ui <- function(id){
 #' @import dplyr
 #' @import tibble
 #' @importFrom rlang %||%
-mod_results_plot_server <- function(id, reactive_train_df, reactive_test_df, reactive_forecast_list){
+mod_results_plot_server <- function(id, reactive_train_df, reactive_test_df, reactive_forecast_list, reactive_global_holidays_data = reactive(NULL)){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
 
@@ -54,6 +54,7 @@ mod_results_plot_server <- function(id, reactive_train_df, reactive_test_df, rea
       test_data <- reactive_test_df()
       # forecast_data <- reactive_forecast_df() # This might be NULL initially
       forecast_list <- reactive_forecast_list() # Get the list
+      holidays_data <- reactive_global_holidays_data() # Get the holidays data
 
       # Use req on train_data, allow empty test_data and forecast_list initially
       req(train_data)
@@ -141,6 +142,50 @@ mod_results_plot_server <- function(id, reactive_train_df, reactive_test_df, rea
                                       #, x = 0.1, y = 0.9
                                       )) # Ensure legend is positioned
       # p <- p %>% layout(legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.1), ...)
+      if (!is.null(holidays_data) && nrow(holidays_data) > 0 && "ds" %in% names(holidays_data)) {
+        # Asegurar que 'ds' sea de tipo Date
+        holidays_to_plot <- holidays_data %>%
+          dplyr::mutate(ds = as.Date(ds)) %>%
+          dplyr::distinct(ds, .keep_all = TRUE) # Evitar líneas duplicadas si hay múltiples feriados en un día
+
+        min_plot_date <- min(c(train_data$ds, if(nrow(test_data)>0) test_data$ds else NULL, unlist(lapply(forecast_list, function(fl) fl$ds))), na.rm = TRUE)
+        max_plot_date <- max(c(train_data$ds, if(nrow(test_data)>0) test_data$ds else NULL, unlist(lapply(forecast_list, function(fl) fl$ds))), na.rm = TRUE)
+
+        holidays_in_range <- holidays_to_plot %>%
+          dplyr::filter(ds >= min_plot_date & ds <= max_plot_date)
+
+        if (nrow(holidays_in_range) > 0) {
+          shapes_list <- list()
+          for (i in 1:nrow(holidays_in_range)) {
+            h_date <- holidays_in_range$ds[i]
+            h_name <- holidays_in_range$holiday[i] %||% as.character(h_date) # Usar nombre del feriado o fecha
+
+            shapes_list[[i]] <- list(
+              type = "line",
+              x0 = h_date, x1 = h_date,
+              y0 = 0, y1 = 1, yref = "paper", # Línea vertical completa
+              line = list(color = "rgba(128, 128, 128, 0.5)", width = 1, dash = "dot"), # Gris punteado semitransparente
+              name = h_name # El nombre no se muestra directamente en la leyenda de shapes, pero es útil para hover
+            )
+          }
+          p <- p %>% layout(shapes = shapes_list)
+
+          # Opcional: Añadir un trace invisible para hover y posible leyenda (más complejo)
+          p <- p %>% add_trace(
+            data = holidays_in_range,
+            x = ~ds,
+            y = Inf, # Posicionar fuera de la vista o en un eje secundario
+            type = 'scatter', mode = 'markers',
+            marker = list(opacity = 0), # Invisible
+            text = ~holiday, # Texto para hover
+            hoverinfo = "text",
+            name = "Holidays", # Para leyenda
+            showlegend = TRUE # Opcional
+          )
+        }
+      }
+
+
       p # Return the plot object
       #
       #

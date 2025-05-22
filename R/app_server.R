@@ -306,6 +306,20 @@ app_server <- function(input, output, session) {
     n_future_periods <- horizon # User requested future horizon
     total_periods_needed <- n_test_periods + n_future_periods
 
+    last_train_date <- max(train_df$ds)
+    by_period_forecast <- switch(freq_str, "week" = lubridate::weeks(1), lubridate::days(1))
+    
+
+    future_dates_for_fcst <- seq.Date(
+      from = last_train_date + by_period_forecast, # Comienza después del último dato de entrenamiento
+      by = freq_str,
+      length.out = total_periods_needed
+    )
+    # --- Nombres de columnas de feriados del entrenamiento (para consistencia en ARIMA xreg) ---
+    # Esto se debe obtener DESPUÉS de entrenar el modelo ARIMA la primera vez,
+    # o pasarlo como atributo del modelo. Por ahora, lo definiremos como NULL
+    # y lo actualizaremos después de entrenar ARIMA.
+    arima_xreg_colnames_from_training <- NULL
     # Basic check for enough training data
     validate(need(nrow(train_df) >= 5, "Need at least 5 training data points.")) # Adjust as needed
 
@@ -355,12 +369,15 @@ app_server <- function(input, output, session) {
           model_run_success <- FALSE
 
           tryCatch({ # Wrap each model run
-            # Common calculations
-            n_test_periods <- nrow(test_df)
-            n_future_periods <- horizon
-            total_periods_needed <- n_test_periods + n_future_periods
-            freq_str <- if (agg_level == "Daily") "day" else "week"
-            last_train_date <- max(train_df$ds)
+            # --- Preparación de Feriados Específica para el Pronóstico ---
+            # Para ARIMA (future_xreg) y GAM (future_holidays_df para generar features)
+            future_holidays_df_for_model <- NULL
+            if (!is.null(current_global_holidays) && nrow(current_global_holidays) > 0) {
+                future_holidays_df_for_model <- current_global_holidays %>%
+                    dplyr::mutate(ds = as.Date(ds)) %>%
+                    dplyr::filter(ds %in% future_dates_for_fcst) # Solo feriados en el horizonte de pronóstico
+            }
+            
 
             # --- Model-Specific Logic ---
             if (model_name == "ARIMA") {
@@ -400,9 +417,72 @@ app_server <- function(input, output, session) {
               model_summary_entry$config <- config
 
 
-              model_or_fcst_obj <- train_arima(train_df, config, aggregation_level = agg_level)
+              model_or_fcst_obj <- train_arima(train_df, config, aggregation_level = agg_level, holidays_df = current_global_holidays)
               req(model_or_fcst_obj, "ARIMA model training failed (returned NULL).") # Check result
-              # message("ARIMA model trained successfully.")
+              
+              future_xreg_arima <- NULL
+              # Guardar los nombres de las columnas de los regresores de feriados usados en el entrenamiento
+              # Esto es crucial. train_arima debería devolver esto o adjuntarlo al modelo.
+              # Asumamos que model_arima_obj$xreg contiene la matriz usada en el entrenamiento si se usaron feriados.
+              if (!is.null(model_or_fcst_obj$xreg)) {
+                  message("ARIMA: Model was trained with xreg. Preparing future_xreg.")
+                  arima_xreg_colnames_from_training <- colnames(model_or_fcst_obj$xreg)
+                  
+                  if (!is.null(future_holidays_df_for_model) && nrow(future_holidays_df_for_model) > 0 &&
+                      !is.null(arima_xreg_colnames_from_training)) {
+                      
+                      # Crear dummies para las fechas futuras, asegurando las mismas columnas que en el entrenamiento
+                      future_holiday_dummies <- future_holidays_df_for_model %>%
+                          dplyr::mutate(holiday = make.names(holiday), value = 1) %>%
+                          tidyr::pivot_wider(names_from = holiday, values_from = value, values_fill = 0)
+                      
+                      # Crear un dataframe base con todas las fechas futuras y todas las columnas de feriados del entrenamiento
+                      future_xreg_df_base <- data.frame(ds = future_dates_for_fcst)
+                      for (col_name in arima_xreg_colnames_from_training) {
+                          future_xreg_df_base[[col_name]] <- 0 # Inicializar todas las dummies de feriados a 0
+                      }
+                      
+                      # Unir las dummies de feriados futuros que realmente ocurren
+                      # y actualizar las columnas correspondientes en future_xreg_df_base
+                      if (nrow(future_holiday_dummies) > 0 && ncol(future_holiday_dummies) > 1) { # >1 para asegurar que hay más que solo 'ds'
+                          common_cols_to_join <- intersect(names(future_xreg_df_base), names(future_holiday_dummies))
+                          
+                          # Asegurar que 'ds' sea la única columna común para el join
+                          cols_from_future_dummies <- setdiff(names(future_holiday_dummies), "ds")
+                          
+                          temp_join_df <- future_xreg_df_base %>% dplyr::select(ds) %>%
+                            dplyr::left_join(future_holiday_dummies %>% dplyr::select(ds, all_of(cols_from_future_dummies)), by = "ds")
+
+                          # Actualizar las columnas en future_xreg_df_base
+                          for(col_h in cols_from_future_dummies) {
+                              if(col_h %in% names(future_xreg_df_base) && col_h %in% names(temp_join_df)) {
+                                  future_xreg_df_base[[col_h]] <- dplyr::coalesce(temp_join_df[[col_h]], future_xreg_df_base[[col_h]])
+                              }
+                          }
+                      }
+                      
+                      future_xreg_arima <- future_xreg_df_base %>%
+                          dplyr::select(all_of(arima_xreg_colnames_from_training)) %>% # Asegurar el orden y las columnas
+                          as.matrix()
+                          
+                      if(nrow(future_xreg_arima) != total_periods_needed) {
+                          stop("Constructed future_xreg_arima rows do not match total_periods_needed.")
+                      }
+                      message(paste("ARIMA: future_xreg prepared with", ncol(future_xreg_arima), "columns."))
+                  } else if (is.null(arima_xreg_colnames_from_training)) {
+                      message("ARIMA: No xreg column names found from training model, cannot create future_xreg reliably.")
+                  } else {
+                      # Si no hay feriados en el futuro pero el modelo se entrenó con ellos,
+                      # necesitamos una matriz de ceros con las columnas correctas.
+                      future_xreg_arima <- matrix(0,
+                                                  nrow = total_periods_needed,
+                                                  ncol = length(arima_xreg_colnames_from_training),
+                                                  dimnames = list(NULL, arima_xreg_colnames_from_training))
+                      message("ARIMA: No future holidays, but model used xreg. Created zero matrix for future_xreg.")
+                  }
+              } else {
+                  message("ARIMA: Model was not trained with xreg. future_xreg will be NULL.")
+              }
 
               # --- ADD: Extract & Store Auto ARIMA Order ---
               if (config$auto) {
@@ -421,7 +501,7 @@ app_server <- function(input, output, session) {
                 model_summary_entry$arima_order <- NULL
               }
               # Call updated forecast_arima
-              forecast_output <- forecast_arima(model_or_fcst_obj, total_periods_needed, last_train_date, freq_str)
+              forecast_output <- forecast_arima(model_or_fcst_obj, total_periods_needed, last_train_date, freq_str, future_xreg = future_xreg_arima)
               forecast_tibble <- forecast_output$forecast # Tibble for plotting/test metrics
               fitted_values <- forecast_output$fitted    # Vector for train metrics
 
@@ -501,7 +581,7 @@ app_server <- function(input, output, session) {
               current_growth <- tryCatch({ model_config_reactives$prophet_growth() }, error = function(e) { message("Error getting prophet_growth"); NULL})
               req(current_growth, "Failed to get Prophet growth parameter.")
               
-              holidays_input <- tryCatch({ model_config_reactives$prophet_holidays_df() }, error = function(e) { message("Error getting prophet_holidays_df"); NULL})
+              holidays_input <- current_global_holidays
               # holidays_input can be NULL, so no req() here unless it's mandatory based on other settings
               
               regressors_input <- tryCatch({ model_config_reactives$prophet_regressors_df() }, error = function(e) { message("Error getting prophet_regressors_df"); NULL})
@@ -799,9 +879,9 @@ app_server <- function(input, output, session) {
                 # Add future config items here (e.g., regressor names)
               ) # Extract GAM config
               model_summary_entry$config <- config
-              model_or_fcst_obj <- train_gam(train_df, config)
+              model_or_fcst_obj <- train_gam(train_df, config, holidays_df = current_global_holidays)
               req(model_or_fcst_obj, "GAM training failed (returned NULL).")
-              forecast_output <- forecast_gam(model_or_fcst_obj, train_df, total_periods_needed, freq_str, config)
+              forecast_output <- forecast_gam(model_or_fcst_obj, train_df, total_periods_needed, freq_str, config, holidays_df = current_global_holidays)
               forecast_tibble <- forecast_output$forecast
               fitted_values <- forecast_output$fitted
               req(forecast_output, forecast_tibble, fitted_values, "GAM forecasting failed.")

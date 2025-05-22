@@ -128,33 +128,34 @@ mod_model_config_server <- function(id) {
         prophet_growth = reactive(input$prophet_growth),
         prophet_capacity = reactive(input$prophet_capacity),
         prophet_changepoint_scale = reactive(input$prophet_changepoint_scale),
-        prophet_holidays_df = reactive({
-          # Prioritize uploaded file
-          if (!is.null(input$prophet_holidays_file) && !is.null(input$prophet_holidays_file$datapath)) {
-            message("Using uploaded custom holidays file.")
-            default_holidays_data(NULL) # Clear default if custom is uploaded
-            tryCatch({
-              df <- read.csv(input$prophet_holidays_file$datapath, sep = ",", fileEncoding = "UTF-8")
-              # Rename columns to 'ds' and 'holiday'
-              if ("Fecha" %in% names(df) && "Feriados_chilenos" %in% names(df)) {
-                df <- df %>%
-                  dplyr::rename(ds = Fecha, holiday = Feriados_chilenos) %>%
-                  dplyr::mutate(ds = as.Date(ds)) %>%
-                  dplyr::select(ds, holiday) # Keep only these two
-              } else {
-                stop("El archivo de feriados debe contener las columnas 'Fecha' y 'Feriados_chilenos'.")
-              }
-              return(df)
-            }, error = function(e) {
-              showNotification(paste("Error al leer el archivo de feriados:", conditionMessage(e)), type = "error", duration = 10)
-              return(NULL)
-            })
-          } else if (!is.null(default_holidays_data())) {
-            message("Using default holidays data.")
-            return(default_holidays_data())
-          }
-          return(NULL)
-        }),
+        prophet_holidays_df = reactive(input$holidays_file),
+        # prophet_holidays_df = reactive({
+        #   # Prioritize uploaded file
+        #   if (!is.null(input$prophet_holidays_file) && !is.null(input$prophet_holidays_file$datapath)) {
+        #     message("Using uploaded custom holidays file.")
+        #     default_holidays_data(NULL) # Clear default if custom is uploaded
+        #     tryCatch({
+        #       df <- read.csv(input$prophet_holidays_file$datapath, sep = ",", fileEncoding = "UTF-8")
+        #       # Rename columns to 'ds' and 'holiday'
+        #       if ("Fecha" %in% names(df) && "Feriados_chilenos" %in% names(df)) {
+        #         df <- df %>%
+        #           dplyr::rename(ds = Fecha, holiday = Feriados_chilenos) %>%
+        #           dplyr::mutate(ds = as.Date(ds)) %>%
+        #           dplyr::select(ds, holiday) # Keep only these two
+        #       } else {
+        #         stop("El archivo de feriados debe contener las columnas 'Fecha' y 'Feriados_chilenos'.")
+        #       }
+        #       return(df)
+        #     }, error = function(e) {
+        #       showNotification(paste("Error al leer el archivo de feriados:", conditionMessage(e)), type = "error", duration = 10)
+        #       return(NULL)
+        #     })
+        #   } else if (!is.null(default_holidays_data())) {
+        #     message("Using default holidays data.")
+        #     return(default_holidays_data())
+        #   }
+        #   return(NULL)
+        # }),
         prophet_regressors_df = reactive({
           req(input$prophet_regressors_file)
           tryCatch({ read.csv(input$prophet_regressors_file$datapath) }, error = function(e) NULL)
