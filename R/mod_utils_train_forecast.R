@@ -44,32 +44,64 @@ train_arima <- function(train_df, config, aggregation_level, holidays_df = NULL)
 
     if (nrow(holidays_in_train_range) > 0) {
       message("ARIMA: Processing ", nrow(holidays_in_train_range), " holidays for xreg.")
-      # Crear variables dummy para cada feriado
-      # Asegurarse de que los nombres de las columnas sean válidos para R
-      holiday_dummies_train <- holidays_in_train_range %>%
-        dplyr::mutate(holiday = make.names(holiday), value = 1) %>% # make.names para asegurar nombres válidos
-        tidyr::pivot_wider(names_from = holiday, values_from = value, values_fill = 0)
 
-      # Unir con train_df para asegurar todas las fechas y el orden correcto
-      # y luego seleccionar solo las columnas dummy
-      temp_train_df_with_dummies <- train_df %>%
-        dplyr::select(ds) %>%
-        dplyr::left_join(holiday_dummies_train, by = "ds") %>%
-        dplyr::arrange(ds)
+      if (aggregation_level == "Weekly") {
+        message("ARIMA: Using aggregated weekly holiday regressor.")
+        
+        # Ensure holidays_in_train_range$ds is Date
+        holidays_in_train_range <- holidays_in_train_range %>%
+          dplyr::mutate(ds = as.Date(ds))
 
-      # Seleccionar solo las columnas de feriados (excluir 'ds')
-      # y rellenar NAs (para días no feriados o feriados no presentes en el subconjunto) con 0
-      xreg_candidates <- temp_train_df_with_dummies %>% dplyr::select(-ds)
-      xreg_candidates[is.na(xreg_candidates)] <- 0
+        weekly_holiday_regressor_df <- train_df %>%
+          dplyr::select(ds) %>%
+          dplyr::rowwise() %>%
+          dplyr::mutate(
+            has_holiday_in_week = {
+              week_start <- ds
+              week_end <- ds + lubridate::days(6)
+              any(holidays_in_train_range$ds >= week_start & holidays_in_train_range$ds <= week_end)
+            }
+          ) %>%
+          dplyr::ungroup() %>% # Ungroup after rowwise operation
+          dplyr::mutate(has_holiday_in_week = as.integer(has_holiday_in_week)) # Convert boolean to 0/1
 
-      if (ncol(xreg_candidates) > 0) {
-        xreg_matrix_train <- as.matrix(xreg_candidates)
-        # Guardar los nombres de las columnas de regresores para el pronóstico
-        # Esto es crucial si se van a necesitar los mismos regresores para el futuro
-        # Podrías almacenar attr(xreg_matrix_train, "holiday_names") <- colnames(xreg_matrix_train)
-        # O devolverlo junto con el modelo.
-      } else {
-        message("ARIMA: No holiday regressors created after processing.")
+        if (nrow(weekly_holiday_regressor_df) > 0 && "has_holiday_in_week" %in% names(weekly_holiday_regressor_df)) {
+          xreg_matrix_train <- as.matrix(weekly_holiday_regressor_df %>% dplyr::select(has_holiday_in_week))
+          message("ARIMA: Weekly holiday regressor matrix created with 1 column.")
+        } else {
+          message("ARIMA: Weekly holiday regressor creation resulted in no columns or data.")
+          xreg_matrix_train <- NULL
+        }
+
+      } else { # Daily or other aggregation levels
+        message("ARIMA: Using daily holiday dummy variable regressors.")
+        # Crear variables dummy para cada feriado
+        # Asegurarse de que los nombres de las columnas sean válidos para R
+        holiday_dummies_train <- holidays_in_train_range %>%
+          dplyr::mutate(holiday = make.names(holiday), value = 1) %>% # make.names para asegurar nombres válidos
+          tidyr::pivot_wider(names_from = holiday, values_from = value, values_fill = 0)
+
+        # Unir con train_df para asegurar todas las fechas y el orden correcto
+        # y luego seleccionar solo las columnas dummy
+        temp_train_df_with_dummies <- train_df %>%
+          dplyr::select(ds) %>%
+          dplyr::left_join(holiday_dummies_train, by = "ds") %>%
+          dplyr::arrange(ds)
+
+        # Seleccionar solo las columnas de feriados (excluir 'ds')
+        # y rellenar NAs (para días no feriados o feriados no presentes en el subconjunto) con 0
+        xreg_candidates <- temp_train_df_with_dummies %>% dplyr::select(-ds)
+        xreg_candidates[is.na(xreg_candidates)] <- 0
+
+        if (ncol(xreg_candidates) > 0) {
+          xreg_matrix_train <- as.matrix(xreg_candidates)
+          # Guardar los nombres de las columnas de regresores para el pronóstico
+          # Esto es crucial si se van a necesitar los mismos regresores para el futuro
+          # Podrías almacenar attr(xreg_matrix_train, "holiday_names") <- colnames(xreg_matrix_train)
+          # O devolverlo junto con el modelo.
+        } else {
+          message("ARIMA: No daily holiday regressors created after processing.")
+        }
       }
     } else {
       message("ARIMA: No holidays found within the training data range.")
@@ -206,6 +238,21 @@ train_arima <- function(train_df, config, aggregation_level, holidays_df = NULL)
     model <<- NULL # Assign NULL to the outer scope model variable
   })
 
+  if (!is.null(model)) {
+    attr(model, "aggregation_level") <- aggregation_level
+    if (!is.null(xreg_matrix_train)) {
+      if (aggregation_level == "Weekly" && ncol(xreg_matrix_train) == 1 && colnames(xreg_matrix_train)[1] == "has_holiday_in_week") {
+        attr(model, "holiday_regressor_type") <- "weekly_aggregated"
+      } else {
+        attr(model, "holiday_regressor_type") <- "daily_dummies"
+      }
+    } else {
+      attr(model, "holiday_regressor_type") <- "none"
+    }
+    message(paste("Stored attributes in model: aggregation_level =", attr(model, "aggregation_level"),
+                  ", holiday_regressor_type =", attr(model, "holiday_regressor_type")))
+  }
+
   message("Finished train_arima")
   return(model)
 }
@@ -227,7 +274,7 @@ train_arima <- function(train_df, config, aggregation_level, holidays_df = NULL)
 #' @import dplyr
 #' @import tibble
 #' @importFrom stats time frequency cycle
-forecast_arima <- function(model, total_periods_needed, train_end_date, freq_str = "day", future_xreg = NULL) {
+forecast_arima <- function(model, total_periods_needed, train_end_date, freq_str = "day", future_xreg = NULL, holidays_df = NULL) {
   if (is.null(model) || !inherits(model, c("ARIMA", "forecast_ARIMA"))) {
     message("Starting forecast_arima - Invalid model")
     warning("Invalid ARIMA model object provided. Returning NULL.")
@@ -237,19 +284,126 @@ forecast_arima <- function(model, total_periods_needed, train_end_date, freq_str
     warning("Invalid horizon provided. Returning NULL.")
     return(NULL)
   }
-  if (!is.null(model$xreg) && is.null(future_xreg)) {
-    warning("ARIMA model was trained with xreg, but future_xreg not provided for forecast. Predictions may be unreliable or fail.")
-    # Podrías optar por detenerse: stop("future_xreg required for this ARIMA model.")
-  }
-  
-  if (!is.null(model$xreg) && !is.null(future_xreg) && ncol(model$xreg) != ncol(future_xreg)) {
-    stop(paste0("Mismatch in xreg columns for forecast. Model: ", ncol(model$xreg), ", Future: ", ncol(future_xreg)))
-  }
-  if (!is.null(future_xreg) && nrow(future_xreg) != total_periods_needed) {
-      stop(paste0("Number of rows in future_xreg (", nrow(future_xreg), ") does not match total_periods_needed (", total_periods_needed, ")."))
-  }
 
   message("Starting forecast_arima")
+  # First, generate forecast_dates as they are needed for xreg generation and output
+  by_period <- switch(freq_str,
+                      "day" = lubridate::days(1),
+                      "week" = lubridate::weeks(1),
+                      lubridate::days(1) # Default
+  )
+  # Correct start_forecast_date based on freq_str
+  start_forecast_date <- if (freq_str == "week") {
+    train_end_date + lubridate::weeks(1)
+  } else {
+    train_end_date + lubridate::days(1)
+  }
+  forecast_dates <- seq.Date(from = start_forecast_date, by = freq_str, length.out = total_periods_needed)
+
+  if (!is.null(model$xreg) && is.null(future_xreg)) {
+    message("ARIMA model was trained with xreg, and future_xreg was not provided. Attempting to generate future_xreg.")
+    aggregation_level_trained <- attr(model, "aggregation_level")
+    holiday_type_trained <- attr(model, "holiday_regressor_type")
+
+    if (is.null(aggregation_level_trained) || is.null(holiday_type_trained)) {
+      warning("ARIMA Forecast: Model is missing 'aggregation_level' or 'holiday_regressor_type' attribute. Cannot generate future_xreg.")
+    } else if (is.null(holidays_df) || nrow(holidays_df) == 0) {
+      warning("ARIMA Forecast: holidays_df is missing or empty. Cannot generate future_xreg.")
+    } else if (holiday_type_trained == "none") {
+      message("ARIMA Forecast: Model was trained without holiday regressors (type 'none'). No future_xreg to generate.")
+    } else {
+      # Ensure holidays_df has 'ds' as Date
+      holidays_df_forecast <- holidays_df %>% dplyr::mutate(ds = as.Date(ds))
+
+      if (holiday_type_trained == "weekly_aggregated") {
+        message("ARIMA Forecast: Generating future_xreg for weekly aggregated holidays.")
+        
+        holidays_in_forecast_range <- holidays_df_forecast %>%
+          dplyr::filter(ds >= min(forecast_dates) & ds <= (max(forecast_dates) + lubridate::days(6))) # cover full last week
+
+        future_xreg_df <- tibble::tibble(ds = forecast_dates) %>%
+          dplyr::rowwise() %>%
+          dplyr::mutate(
+            has_holiday_in_week = {
+              week_start_current <- ds
+              week_end_current <- ds + lubridate::days(6)
+              any(holidays_in_forecast_range$ds >= week_start_current & holidays_in_forecast_range$ds <= week_end_current)
+            }
+          ) %>%
+          dplyr::ungroup() %>%
+          dplyr::mutate(has_holiday_in_week = as.integer(has_holiday_in_week))
+        
+        if (nrow(future_xreg_df) > 0 && "has_holiday_in_week" %in% names(future_xreg_df)) {
+          future_xreg <- as.matrix(future_xreg_df %>% dplyr::select(has_holiday_in_week))
+          message("ARIMA Forecast: Generated weekly_aggregated future_xreg with ", nrow(future_xreg), " rows and 1 column.")
+        } else {
+           message("ARIMA Forecast: Failed to generate weekly_aggregated future_xreg components.")
+           future_xreg <- NULL # Ensure it's NULL if generation failed
+        }
+
+      } else if (holiday_type_trained == "daily_dummies") {
+        message("ARIMA Forecast: Generating future_xreg for daily holiday dummies.")
+        trained_holiday_names <- colnames(model$xreg)
+        if (is.null(trained_holiday_names) || length(trained_holiday_names) == 0) {
+          warning("ARIMA Forecast: Model was trained with daily_dummies, but no regressor names found in model$xreg colnames.")
+          future_xreg <- NULL
+        } else {
+          holidays_in_forecast_range <- holidays_df_forecast %>%
+            dplyr::filter(ds >= min(forecast_dates) & ds <= max(forecast_dates))
+
+          if (nrow(holidays_in_forecast_range) > 0) {
+            future_holiday_dummies_raw <- holidays_in_forecast_range %>%
+              dplyr::mutate(holiday = make.names(holiday), value = 1) %>%
+              tidyr::pivot_wider(names_from = holiday, values_from = value, values_fill = 0)
+            
+            future_dates_df_template <- tibble::tibble(ds = forecast_dates)
+            
+            temp_future_df_with_dummies <- future_dates_df_template %>%
+              dplyr::left_join(future_holiday_dummies_raw, by = "ds")
+            
+            # Create a zero matrix with correct column names and order
+            future_xreg_matrix_template <- matrix(0, nrow = total_periods_needed, ncol = length(trained_holiday_names))
+            colnames(future_xreg_matrix_template) <- trained_holiday_names
+            
+            # Fill the template
+            for (col_name in trained_holiday_names) {
+              if (col_name %in% names(temp_future_df_with_dummies)) {
+                # Ensure to replace NAs that arise from left_join if a date had no holiday
+                future_xreg_matrix_template[, col_name] <- ifelse(is.na(temp_future_df_with_dummies[[col_name]]), 0, temp_future_df_with_dummies[[col_name]])
+              }
+            }
+            future_xreg <- future_xreg_matrix_template
+            message("ARIMA Forecast: Generated daily_dummies future_xreg with ", nrow(future_xreg), " rows and ", ncol(future_xreg), " columns.")
+          } else {
+            message("ARIMA Forecast: No holidays found in the forecast range for daily_dummies. Generating zero matrix.")
+            future_xreg <- matrix(0, nrow = total_periods_needed, ncol = length(trained_holiday_names))
+            colnames(future_xreg) <- trained_holiday_names
+          }
+        }
+      } else {
+        warning(paste("ARIMA Forecast: Unknown holiday_regressor_type '", holiday_type_trained, "'. Cannot generate future_xreg.", sep=""))
+      }
+    }
+  } else if (!is.null(model$xreg) && !is.null(future_xreg)) {
+     message("ARIMA Forecast: future_xreg was provided directly.")
+  }
+
+
+  # Validation of generated or provided future_xreg
+  if (!is.null(model$xreg) && is.null(future_xreg)) { # If xreg was expected but not generated/provided
+      warning("ARIMA model was trained with xreg, but future_xreg is NULL after generation attempt. Forecasting without xreg.")
+  } else if (!is.null(model$xreg) && !is.null(future_xreg)) { # If xreg is present
+    if (ncol(future_xreg) != ncol(model$xreg)) {
+      stop(paste0("Mismatch in xreg columns for forecast. Model: ", ncol(model$xreg), ", Future: ", ncol(future_xreg), ". Check generation logic or provided future_xreg."))
+    }
+    if (nrow(future_xreg) != total_periods_needed) {
+      stop(paste0("Number of rows in future_xreg (", nrow(future_xreg), ") does not match total_periods_needed (", total_periods_needed, ")."))
+    }
+    if (!is.matrix(future_xreg)) {
+      warning("Generated future_xreg is not a matrix. Attempting to convert.")
+      future_xreg <- as.matrix(future_xreg)
+    }
+  }
   fcst <- NULL
   tryCatch({
     fcst <- forecast::forecast(model, h = total_periods_needed, level = c(80, 95), xreg = future_xreg)
@@ -265,28 +419,14 @@ forecast_arima <- function(model, total_periods_needed, train_end_date, freq_str
 
   # Convert forecast object to a tibble
   fcst_df <- tryCatch({
-
-    # Determine the time unit based on frequency string
-    by_period <- switch(freq_str,
-                        "day" = lubridate::days(1),
-                        "week" = lubridate::weeks(1),
-                        lubridate::days(1) # Default
-    )
-    # Calculate the first date of the forecast period
-    start_forecast_date <- train_end_date + by_period
-
-    # Generate the date sequence for the forecast horizon
-    forecast_dates <- seq.Date(from = start_forecast_date, by = freq_str, length.out = total_periods_needed)
-
-    # --- End Improved Date Calculation ---
-
     # Ensure dates vector length matches forecast length
     if(length(forecast_dates) != length(fcst$mean)) {
-      stop("Generated forecast dates length does not match forecast horizon.")
+      stop(paste0("Generated forecast_dates length (", length(forecast_dates), 
+                  ") does not match forecast horizon mean length (", length(fcst$mean), ")."))
     }
 
     tibble::tibble(
-      ds = forecast_dates, # Use the reliably generated dates
+      ds = forecast_dates, # Use the forecast_dates generated earlier
       yhat = as.numeric(fcst$mean),
       yhat_lower_80 = as.numeric(fcst$lower[, 1]),
       yhat_upper_80 = as.numeric(fcst$upper[, 1]),
