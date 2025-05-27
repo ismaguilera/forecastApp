@@ -17,7 +17,8 @@ app_ui <- function(request) {
     # Top-level container: page_navbar
     bslib::page_navbar(
       title = "Vaccine Forecasting App", # Page title
-      theme = bslib::bs_theme(version = 5, bootswatch = "cosmo", bg = "#2c3e50", fg = "#ffffff"), # Apply theme (change "cerulean" if desired)
+      theme = bslib::bs_theme(version = 5, bootswatch = "cerulean"),
+      # theme = bslib::bs_theme(version = 5, bootswatch = "cosmo", bg = "#2c3e50", fg = "#ffffff"), # Apply theme (change "cerulean" if desired)
       # Collapsible navigation on smaller screens
       # collapsible = TRUE,
       # Inverse theme for navbar (optional)
@@ -179,10 +180,11 @@ app_ui <- function(request) {
       ), # End Results nav_panel
 
       # --- Validation Panel ---
-      # bslib::nav_panel( # This is now handled by the module UI
-      #   title = tagList(shiny::icon("circle-check"), "Validation"),
-      # ),
-      mod_validation_ui("validation_1"), # Call the module UI here
+      bslib::nav_panel( # This is now handled by the module UI
+        title = tagList(shiny::icon("circle-check"), "Validation"),
+        mod_validation_ui("validation_1") 
+      ),
+       # Call the module UI here
 
       bslib::nav_spacer(), # Adds space before right-aligned items
       bslib::nav_item(

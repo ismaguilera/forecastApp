@@ -290,7 +290,8 @@ mod_validation_server <- function(id, reactive_run_models_summary, reactive_trai
             message(paste("Error in CV for model", model_name_cv, "slice", i, ":", conditionMessage(e_cv)))
           })
         }
-      }
+        }
+      })
 
       if (length(all_cv_metrics) > 0) {
         final_cv_metrics_df <- dplyr::bind_rows(all_cv_metrics)
