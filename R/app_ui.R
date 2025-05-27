@@ -17,7 +17,7 @@ app_ui <- function(request) {
     # Top-level container: page_navbar
     bslib::page_navbar(
       title = "Vaccine Forecasting App", # Page title
-      theme = bslib::bs_theme(version = 5, bootswatch = "cerulean"), # Apply theme (change "cerulean" if desired)
+      theme = bslib::bs_theme(version = 5, bootswatch = "cosmo", bg = "#2c3e50", fg = "#ffffff"), # Apply theme (change "cerulean" if desired)
       # Collapsible navigation on smaller screens
       # collapsible = TRUE,
       # Inverse theme for navbar (optional)
@@ -46,19 +46,20 @@ app_ui <- function(request) {
           ),
           # Main content for Data panel
           bslib::card(
+            bslib::card_header("Global Holidays Data (Preview)"),
             bslib::card_body(
-              h4("Global Holidays Data (Preview)"),
               verbatimTextOutput("global_holidays_preview")
             )
           ),
           bslib::accordion(
             open = c("Preprocessing & Split","Time Series Decomposition"),
             bslib::accordion_panel(
-              "Preprocessing & Split",
+              title = "Preprocessing & Split", # Title for accordion panel
               mod_preprocess_controls_ui("preprocess_controls_1")
             ),
             bslib::accordion_panel(
-              "Time Series Decomposition",
+              title = "Time Series Decomposition", # Title for accordion panel
+              full_screen = TRUE, # Added full_screen here
               mod_decomposition_plot_ui("decomposition_plot_1")
             )
           )
@@ -138,13 +139,13 @@ app_ui <- function(request) {
           bslib::navset_card_underline(
             title = "Visualizations",
             # Panel with plot ----
-            bslib::nav_panel("Plot",h1="Forecast plot", mod_results_plot_ui("results_plot_1")),
+            bslib::nav_panel("Plot", h1="Forecast plot", mod_results_plot_ui("results_plot_1"), full_screen = TRUE),
 
             # Panel with summary ----
-            bslib::nav_panel("Performance",h1="Model performance metrics", mod_results_table_ui("results_table_1")),
+            bslib::nav_panel("Performance", h1="Model performance metrics", mod_results_table_ui("results_table_1"), full_screen = TRUE),
 
             # Panel with table ----
-            bslib::nav_panel("Extra Plots",h1="Additional plots", mod_extra_plots_ui("extra_plots_1"))
+            bslib::nav_panel("Extra Plots", h1="Additional plots", mod_extra_plots_ui("extra_plots_1"), full_screen = TRUE)
           )
 
           # bslib::card(
@@ -178,37 +179,10 @@ app_ui <- function(request) {
       ), # End Results nav_panel
 
       # --- Validation Panel ---
-      bslib::nav_panel(
-        title = tagList(shiny::icon("circle-check"), "Validation"),
-        # Internal layout for this panel
-        bslib::layout_sidebar(
-          sidebar = bslib::sidebar(
-            title = "Config",
-            width = 350,
-            uiOutput("cv_model_selector_ui"), # Dynamic UI for model selection
-            hr(),
-            h5("Cross-Validation Parameters:"),
-            numericInput("cv_initial_window", "Initial Training Window (periods)", value = 90, min = 10),
-            numericInput("cv_horizon", "Forecast Horizon (per fold)", value = 30, min = 1),
-            numericInput("cv_skip", "Skip Periods (between folds)", value = 15, min = 0),
-            checkboxInput("cv_cumulative", "Cumulative Training Window", value = FALSE),
-            actionButton("run_cv_button", "Run Cross-Validation", icon = icon("play-circle"), class = "btn-primary")
-          ), # End sidebar
-          # Main content for Validation panel
-          bslib::card(
-            bslib::card_header("Cross-Validation Mean Metrics"),
-            bslib::card_body(
-              DT::dataTableOutput("cv_results_table_output")
-            )
-          ),
-          bslib::card(
-            bslib::card_header("Cross-Validation Metric Distributions"),
-            bslib::card_body(
-              plotOutput("cv_results_plot_output")
-            )
-          )
-        ) # End layout_sidebar for Validation panel
-      ), # End Validation nav_panel
+      # bslib::nav_panel( # This is now handled by the module UI
+      #   title = tagList(shiny::icon("circle-check"), "Validation"),
+      # ),
+      mod_validation_ui("validation_1"), # Call the module UI here
 
       bslib::nav_spacer(), # Adds space before right-aligned items
       bslib::nav_item(
@@ -238,6 +212,7 @@ app_ui <- function(request) {
           ), # End sidebar
 
           bslib::card(
+            full_screen = TRUE, # Added full_screen here
             bslib::card_header(tags$strong("Vaccine Forecasting Application:")),
             bslib::card_body(
               # Placeholder for validation outputs

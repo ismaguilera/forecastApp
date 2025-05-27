@@ -141,53 +141,68 @@ mod_results_plot_server <- function(id, reactive_train_df, reactive_test_df, rea
                                       xanchor = "center"
                                       #, x = 0.1, y = 0.9
                                       )) # Ensure legend is positioned
-      # p <- p %>% layout(legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.1), ...)
-      if (!is.null(holidays_data) && nrow(holidays_data) > 0 && "ds" %in% names(holidays_data)) {
-        # Asegurar que 'ds' sea de tipo Date
-        holidays_to_plot <- holidays_data %>%
+      
+      # --- Add Global Holidays Display ---
+      if (!is.null(holidays_data) && nrow(holidays_data) > 0 &&
+          all(c("ds", "holiday") %in% names(holidays_data))) {
+        
+        processed_holidays <- holidays_data %>%
           dplyr::mutate(ds = as.Date(ds)) %>%
-          dplyr::distinct(ds, .keep_all = TRUE) # Evitar líneas duplicadas si hay múltiples feriados en un día
-
-        min_plot_date <- min(c(train_data$ds, if(nrow(test_data)>0) test_data$ds else NULL, unlist(lapply(forecast_list, function(fl) fl$ds))), na.rm = TRUE)
-        max_plot_date <- max(c(train_data$ds, if(nrow(test_data)>0) test_data$ds else NULL, unlist(lapply(forecast_list, function(fl) fl$ds))), na.rm = TRUE)
-
-        holidays_in_range <- holidays_to_plot %>%
-          dplyr::filter(ds >= min_plot_date & ds <= max_plot_date)
-
+          dplyr::distinct(ds, .keep_all = TRUE) # Ensure unique dates for lines/markers
+        
+        current_plot_data_dates <- c()
+        if (!is.null(train_data) && nrow(train_data) > 0) current_plot_data_dates <- c(current_plot_data_dates, train_data$ds)
+        if (!is.null(test_data) && nrow(test_data) > 0) current_plot_data_dates <- c(current_plot_data_dates, test_data$ds)
+        if (length(forecast_list) > 0) {
+          for(fcst_df_item in forecast_list) {
+            if (!is.null(fcst_df_item) && nrow(fcst_df_item) > 0 && "ds" %in% names(fcst_df_item)) {
+              current_plot_data_dates <- c(current_plot_data_dates, fcst_df_item$ds)
+            }
+          }
+        }
+        current_plot_data_dates <- unique(as.Date(current_plot_data_dates))
+        
+        holidays_in_range <- processed_holidays
+        if (length(current_plot_data_dates) > 0) {
+          min_date <- min(current_plot_data_dates, na.rm = TRUE)
+          max_date <- max(current_plot_data_dates, na.rm = TRUE)
+          if (!is.na(min_date) && !is.na(max_date)) {
+            holidays_in_range <- processed_holidays %>%
+              dplyr::filter(ds >= min_date & ds <= max_date)
+          }
+        }
+        
         if (nrow(holidays_in_range) > 0) {
           shapes_list <- list()
           for (i in 1:nrow(holidays_in_range)) {
             h_date <- holidays_in_range$ds[i]
-            h_name <- holidays_in_range$holiday[i] %||% as.character(h_date) # Usar nombre del feriado o fecha
-
             shapes_list[[i]] <- list(
               type = "line",
               x0 = h_date, x1 = h_date,
-              y0 = 0, y1 = 1, yref = "paper", # Línea vertical completa
-              line = list(color = "rgba(128, 128, 128, 0.5)", width = 1, dash = "dot"), # Gris punteado semitransparente
-              name = h_name # El nombre no se muestra directamente en la leyenda de shapes, pero es útil para hover
+              y0 = 0, y1 = 1, yref = "paper",
+              line = list(color = "rgba(180, 180, 180, 0.6)", width = 1, dash = "dashdot")
             )
           }
           p <- p %>% layout(shapes = shapes_list)
-
-          # Opcional: Añadir un trace invisible para hover y posible leyenda (más complejo)
+          
           p <- p %>% add_trace(
             data = holidays_in_range,
             x = ~ds,
-            y = Inf, # Posicionar fuera de la vista o en un eje secundario
-            type = 'scatter', mode = 'markers',
-            marker = list(opacity = 0), # Invisible
-            text = ~holiday, # Texto para hover
+            y = 1, # Position at the top of the plot
+            yref = "paper", # Relative to the plot paper
+            type = 'scatter', 
+            mode = 'markers',
+            marker = list(opacity = 0.001, size = 10), # Effectively invisible but hoverable
+            text = ~paste(holiday, "<br>", ds), # Hover text: holiday name and date
             hoverinfo = "text",
-            name = "Holidays", # Para leyenda
-            showlegend = TRUE # Opcional
+            name = "Holidays", # Name for the legend
+            showlegend = TRUE
           )
         }
       }
-
+      # --- End Global Holidays Display ---
 
       p # Return the plot object
-      #
       #
       #
       #
