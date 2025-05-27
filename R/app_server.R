@@ -6,8 +6,9 @@
 #' @importFrom shinyjs reset
 #' @importFrom RColorBrewer brewer.pal
 #' @importFrom stats predict 
-#' @importFrom utils head capture.output str 
+#' @importFrom utils head capture.output str packageVersion
 #' @importFrom purrr reduce 
+#' @importFrom rlang `%||%`
 # Needed for forecast() call inside observeEvent
 # Add other necessary imports if functions are called directly here
 #' @noRd
@@ -174,42 +175,45 @@ app_server <- function(input, output, session) {
     tryCatch({
       df <- utils::read.csv(inFile$datapath, stringsAsFactors = FALSE, header = TRUE)
       # Validar y procesar df (debe tener columnas 'ds' y 'holiday')
-      req("Fecha" %in% names(df), "Feriados_chilenos" %in% names(df))
+      req("Fecha" %in% names(df), "Feriados_chilenos" %in% names(df)) # Original column names
       df_holidays <- df %>%
         dplyr::rename(ds = Fecha, holiday = Feriados_chilenos) %>%
         dplyr::mutate(ds = lubridate::as_date(ds)) %>%
         dplyr::select(ds, holiday) %>%
-        dplyr::filter(!is.na(ds) & !is.na(holiday)) #
-      req(nrow(df_holidays) > 0)
+        dplyr::filter(!is.na(ds) & !is.na(holiday))
+      req(nrow(df_holidays) > 0, "Processed holiday data is empty. Ensure correct format and non-empty data.")
       r$global_holidays_data(df_holidays)
-      shiny::showNotification("Global holidays file uploaded and processed.", type = "message")
+      shiny::showNotification("Global holidays file uploaded and processed successfully.", type = "message")
     }, error = function(e) {
-      r$global_holidays_data(NULL)
-      shiny::showNotification(paste("Error processing global holidays file:", e$message), type = "error")
+      r$global_holidays_data(NULL) # Reset on error
+      error_message <- paste("Error processing global holidays file. Please check format (CSV with 'Fecha', 'Feriados_chilenos' columns) and content. Original error:", e$message)
+      shiny::showNotification(error_message, type = "error", duration = 10)
     })
   })
 
   observeEvent(input$load_default_holidays, {
-    req(input$load_default_holidays)
+    req(input$load_default_holidays) # Triggered by button press
     df_holidays <- NULL
     tryCatch({
-      default_h_file_name <- get_golem_config("default_holiday_file") #
-      req(default_h_file_name)
-      default_h_file_path <- app_sys("extdata", default_h_file_name) #
-      req(file.exists(default_h_file_path))
-      df <- utils::read.csv(default_h_file_path, stringsAsFactors = FALSE, header = TRUE, fileEncoding="UTF-8-BOM") #
-      req("Fecha" %in% names(df), "Feriados_chilenos" %in% names(df))
+      default_h_file_name <- get_golem_config("default_holiday_file")
+      req(default_h_file_name, "Default holiday file name not configured.")
+      default_h_file_path <- app_sys("extdata", default_h_file_name)
+      req(file.exists(default_h_file_path), paste("Default holiday file not found at:", default_h_file_path))
+      
+      df <- utils::read.csv(default_h_file_path, stringsAsFactors = FALSE, header = TRUE, fileEncoding="UTF-8-BOM")
+      req("Fecha" %in% names(df), "Feriados_chilenos" %in% names(df)) # Original column names
       df_holidays <- df %>%
         dplyr::rename(ds = Fecha, holiday = Feriados_chilenos) %>%
         dplyr::mutate(ds = lubridate::as_date(ds)) %>%
         dplyr::select(ds, holiday) %>%
-        dplyr::filter(!is.na(ds) & !is.na(holiday)) #
-      req(nrow(df_holidays) > 0)
+        dplyr::filter(!is.na(ds) & !is.na(holiday))
+      req(nrow(df_holidays) > 0, "Processed default holiday data is empty.")
       r$global_holidays_data(df_holidays)
-      shiny::showNotification("Default global holidays loaded.", type = "message")
+      shiny::showNotification("Default global holidays loaded successfully.", type = "message")
     }, error = function(e) {
-      r$global_holidays_data(NULL)
-      shiny::showNotification(paste("Error loading default global holidays:", e$message), type = "error")
+      r$global_holidays_data(NULL) # Reset on error
+      error_message <- paste("Error loading default global holidays. Please check the file and application configuration. Original error:", e$message)
+      shiny::showNotification(error_message, type = "error", duration = 10)
     })
   })
 
@@ -1066,33 +1070,26 @@ app_server <- function(input, output, session) {
             message(paste("--- Finished Model:", model_name, "Successfully ---"))
 
           }, error = function(e){ # Catch error for INDIVIDUAL model
-              warning(paste("Error running model", model_name, ":", conditionMessage(e)))
-              shiny::showNotification(paste("Failed to run:", model_name), type="warning")
-              # Do not stop the loop, just skip storing results for this model
-              r$metrics_list = list() # Store list of metric tibbles (for later)
-              r$model_summary_list = list() # Store list of model summary info (for later)
+              user_friendly_message <- paste0(
+                "Error during ", model_name, " model processing. ",
+                "Please check this model's configuration and input data suitability. ",
+                "Specific error: ", conditionMessage(e)
+              )
+              warning(paste("Error running model", model_name, ":", conditionMessage(e))) # Keep for server logs
+              shiny::showNotification(user_friendly_message, type = "warning", duration = 10)
 
-              # r$forecast_obj <- NULL
-              # r$forecast_df <- NULL
-              r$metrics_summary <- NULL
-              # r$model_name <- NULL
-              # r$arima_selected_order <- NULL
-              # r$arima_used_frequency <- NULL
-              model_success <<- FALSE
+              # Reset results for THIS model specifically if needed, though current logic
+              # of not assigning to r$forecast_list etc. for this model is correct.
+              # model_success <<- FALSE # This assignment might not be needed if not used elsewhere before loop ends
               model_summary_entry$success <- FALSE
               model_summary_entry$error <- conditionMessage(e)
-              temp_summary_list[[model_name]] <- model_summary_entry
-              # Print error object to console for debugging
-              print(paste("ERROR during forecast execution:", Sys.time()))
-              print("--- Full Error Object ---")
-              print(e) # Print the whole error object 'e'
-              print("--- End Error Object ---")
+              temp_summary_list[[model_name]] <- model_summary_entry # Store error info
 
-            # shiny::showNotification(
-            #   paste("Error during forecast:", conditionMessage(e)), # Still show message in UI
-            #   type = "error",
-            #   duration = 15
-            # )
+              # Print error object to console for detailed debugging
+              print(paste("ERROR during forecast execution for model:", model_name, "at", Sys.time()))
+              print("--- Full Error Object (Individual Model) ---")
+              print(e)
+              print("--- End Error Object (Individual Model) ---")
 
 
           }) # End inner tryCatch
@@ -1223,11 +1220,27 @@ app_server <- function(input, output, session) {
         # combined_metrics_table <- ... logic to loop through fitted_list/forecast_list ...
         # r$metrics_summary <- combined_metrics_table
         # --- End Metrics ---
-      }, error = function(e) { # Outer catch handler
-        message(paste("ERROR caught in outer tryCatch:", conditionMessage(e)))
-        print("--- Outer tryCatch Error Object ---"); print(e); print("--- End ---")
-        r$forecast_list <- list(); r$fitted_list <- list(); r$metrics_summary <- NULL; r$run_models_summary <- list(); r$run_id <- r$run_id + 1 # Reset and trigger update
-        shiny::showNotification( paste("Error during forecast execution:", conditionMessage(e)), type = "error", duration = 15)
+      }, error = function(e) { # Outer catch handler for the entire forecast process
+        # This catches errors outside individual model loops (e.g., initial data prep, metrics combination if not caught)
+        detailed_error_msg <- conditionMessage(e)
+        user_facing_error_msg <- paste(
+          "An unexpected error occurred during the overall forecast process. ",
+          "Please review your data and general settings. ",
+          "Details: ", detailed_error_msg
+        )
+        message(paste("ERROR caught in outer tryCatch for forecast process:", detailed_error_msg)) # Server log
+        print("--- Outer tryCatch Error Object (Forecast Process) ---")
+        print(e)
+        print("--- End Outer tryCatch Error Object ---")
+
+        # Reset all potentially affected reactive values to a clean state
+        r$forecast_list <- list()
+        r$fitted_list <- list()
+        r$metrics_summary <- NULL
+        r$run_models_summary <- list() # Contains error info if models ran
+        # r$run_id <- r$run_id + 1 # Increment to ensure UI updates, even if it's to show no results or errors
+        
+        shiny::showNotification(user_facing_error_msg, type = "error", duration = 15)
       }) # End outer tryCatch
 
     }) # End withProgress (outer one)
@@ -1303,6 +1316,115 @@ app_server <- function(input, output, session) {
   output$global_holidays_preview <- renderPrint({
     head(r$global_holidays_data())
   })
+
+  # --- Save Session Logic ---
+  observeEvent(input$save_session_button, {
+    shiny::showModal(modalDialog(
+      title = "Save Session",
+      textInput("session_filename_input", "Enter filename for session (e.g., my_forecast_session):", 
+                value = paste0("forecast_session_", format(Sys.time(), "%Y%m%d_%H%M%S"))),
+      footer = tagList(
+        modalButton("Cancel"),
+        downloadButton("trigger_session_save_download", "Save to RDS")
+      ),
+      easyClose = TRUE
+    ))
+  })
+
+  output$trigger_session_save_download <- downloadHandler(
+    filename = function() {
+      req(input$session_filename_input)
+      # Sanitize filename to prevent invalid characters
+      sanitized_name <- gsub("[^a-zA-Z0-9_\\-\\.]", "_", input$session_filename_input)
+      if (!grepl("\\.rds$", sanitized_name, ignore.case = TRUE)) {
+        sanitized_name <- paste0(sanitized_name, ".rds")
+      }
+      sanitized_name
+    },
+    content = function(file) {
+      # Gather all data to save
+      # Main reactive values 'r'
+      r_values_to_save <- reactiveValuesToList(r)
+      
+      # Data Input module state
+      di_state_values <- list(
+        selected_date_col = data_input_reactives$reactive_selected_date_col(),
+        selected_value_col = data_input_reactives$reactive_selected_value_col(),
+        selected_format = data_input_reactives$reactive_selected_format(),
+        data_input_1_fileUpload_name = data_input_reactives$raw_data_name() # Store original filename
+      )
+
+      # Preprocessing module state
+      pp_state_values <- list(
+        aggregation_level = preprocess_reactives$reactive_agg_level(),
+        aggregation_function = preprocess_reactives$reactive_agg_func(),
+        train_test_split_ratio = preprocess_reactives$reactive_train_test_split(),
+        imputation_method = preprocess_reactives$reactive_imputation_method(),
+        transformation_method = preprocess_reactives$reactive_transformation_method()
+      )
+      
+      # Model configurations - exhaustive list of all inputs
+      mc_state_values <- list(
+        active_tab = model_config_reactives$active_tab(),
+        forecast_horizon = model_config_reactives$forecast_horizon(),
+        # ARIMA
+        use_arima = model_config_reactives$use_arima(),
+        arima_auto = model_config_reactives$arima_auto(), arima_p = model_config_reactives$arima_p(), arima_d = model_config_reactives$arima_d(), arima_q = model_config_reactives$arima_q(),
+        arima_seasonal = model_config_reactives$arima_seasonal(), arima_P = model_config_reactives$arima_P(), arima_D = model_config_reactives$arima_D(), arima_Q = model_config_reactives$arima_Q(), arima_period = model_config_reactives$arima_period(),
+        # ETS
+        use_ets = model_config_reactives$use_ets(),
+        ets_manual = model_config_reactives$ets_manual(), ets_e = model_config_reactives$ets_e(), ets_t = model_config_reactives$ets_t(), ets_s = model_config_reactives$ets_s(), ets_damped_str = model_config_reactives$ets_damped_str(),
+        # TBATS
+        use_tbats = model_config_reactives$use_tbats %||% FALSE,
+        # Prophet
+        use_prophet = model_config_reactives$use_prophet(),
+        prophet_growth = model_config_reactives$prophet_growth(), prophet_yearly = model_config_reactives$prophet_yearly(), prophet_weekly = model_config_reactives$prophet_weekly(), prophet_daily = model_config_reactives$prophet_daily(),
+        prophet_changepoint_scale = model_config_reactives$prophet_changepoint_scale(), prophet_capacity = model_config_reactives$prophet_capacity(),
+        # XGBoost
+        use_xgboost = model_config_reactives$use_xgboost(),
+        xgb_enable_tuning = model_config_reactives$xgb_enable_tuning(),
+        xgb_nrounds = model_config_reactives$xgb_nrounds(), xgb_eta = model_config_reactives$xgb_eta(), xgb_max_depth = model_config_reactives$xgb_max_depth(),
+        xgb_subsample = model_config_reactives$xgb_subsample(), xgb_colsample = model_config_reactives$xgb_colsample(), xgb_gamma = model_config_reactives$xgb_gamma(),
+        # GAM
+        use_gam = model_config_reactives$use_gam(),
+        gam_trend_type = model_config_reactives$gam_trend_type(), gam_use_season_y = model_config_reactives$gam_use_season_y(), gam_use_season_w = model_config_reactives$gam_use_season_w(),
+        # RF
+        use_rf = model_config_reactives$use_rf(),
+        rf_enable_tuning = model_config_reactives$rf_enable_tuning(),
+        rf_num_trees = model_config_reactives$rf_num_trees(), rf_mtry = model_config_reactives$rf_mtry(), rf_min_node_size = model_config_reactives$rf_min_node_size()
+      )
+      
+      # Include original filename of global holidays file, if it was uploaded
+      global_holidays_file_name_to_save <- NULL
+      if (!is.null(input$global_holidays_file$name) && nzchar(input$global_holidays_file$name)) {
+        global_holidays_file_name_to_save <- input$global_holidays_file$name
+      }
+
+
+      session_state_to_save <- list(
+        timestamp = Sys.time(),
+        app_version = utils::packageVersion("forecastApp"),
+        r_values = r_values_to_save,
+        data_input_state_values = di_state_values,
+        preprocess_state_values = pp_state_values,
+        model_config_state_values = mc_state_values,
+        global_holidays_file_name = global_holidays_file_name_to_save # Save original filename
+      )
+      
+      notification_id <- shiny::showNotification("Saving session... Please wait.", duration = NULL, type = "message")
+      on.exit(shiny::removeNotification(notification_id), add = TRUE)
+
+      tryCatch({
+        saveRDS(session_state_to_save, file = file)
+        shiny::removeModal()
+        shiny::showNotification(paste("Session saved to", basename(file)), type = "success", duration = 5)
+      }, error = function(e_save) {
+        shiny::showNotification(paste("Error saving session:", e_save$message), type = "error", duration = 10)
+      })
+    },
+    contentType = "application/octet-stream"
+  )
+  # --- End Save Session Logic ---
 
 }) # End app_server
 }
