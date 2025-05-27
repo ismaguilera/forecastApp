@@ -207,6 +207,14 @@ app_ui <- function(request) {
         ) # End layout_sidebar for Validation panel
       ), # End Validation nav_panel
 
+      bslib::nav_spacer(), # Adds space before right-aligned items
+      bslib::nav_item(
+        actionButton("save_session_button", "Save Session", icon = icon("save"), class = "btn-primary btn-sm")
+      ),
+      bslib::nav_item(
+        actionButton("load_session_button", "Load Session", icon = icon("folder-open"), class = "btn-info btn-sm")
+      ),
+
       # --- Footer Definition ---
       # footer = tags$div(
       #   style = "text-align: center; padding: 15px; background-color: #f5f5f5; border-top: 1px solid #e3e3e3;",
