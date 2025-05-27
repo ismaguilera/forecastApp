@@ -185,23 +185,26 @@ app_ui <- function(request) {
           sidebar = bslib::sidebar(
             title = "Config",
             width = 350,
-            # Placeholder for Validation Configuration?
-            tags$p("Placeholder for validation settings controls (if any)"),
-            tags$p("Placeholder for model selection for comparison?")
+            uiOutput("cv_model_selector_ui"), # Dynamic UI for model selection
+            hr(),
+            h5("Cross-Validation Parameters:"),
+            numericInput("cv_initial_window", "Initial Training Window (periods)", value = 90, min = 10),
+            numericInput("cv_horizon", "Forecast Horizon (per fold)", value = 30, min = 1),
+            numericInput("cv_skip", "Skip Periods (between folds)", value = 15, min = 0),
+            checkboxInput("cv_cumulative", "Cumulative Training Window", value = FALSE),
+            actionButton("run_cv_button", "Run Cross-Validation", icon = icon("play-circle"), class = "btn-primary")
           ), # End sidebar
           # Main content for Validation panel
           bslib::card(
-            bslib::card_header("Validation results"),
+            bslib::card_header("Cross-Validation Mean Metrics"),
             bslib::card_body(
-              # Placeholder for validation outputs
-              tags$p("Placeholder for validation results display (e.g., backtesting metrics)")
+              DT::dataTableOutput("cv_results_table_output")
             )
           ),
           bslib::card(
-            bslib::card_header("Model comparison"),
+            bslib::card_header("Cross-Validation Metric Distributions"),
             bslib::card_body(
-              # Placeholder for comparison outputs
-              tags$p("Placeholder for model comparison display (e.g., plots/tables)")
+              plotOutput("cv_results_plot_output")
             )
           )
         ) # End layout_sidebar for Validation panel
