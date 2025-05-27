@@ -129,13 +129,16 @@ mod_model_config_ui <- function(id){
               hr(),
               h5("Model Structure:"),
               fluidRow(
-                column(6, numericInput(ns("nnetar_p"), "Non-seasonal lags (p)", value = 1, min = 0, step = 1, width = '100%')),
-                column(6, numericInput(ns("nnetar_P"), "Seasonal lags (P)", value = 1, min = 0, step = 1, width = '100%'))
+                column(6, numericInput(ns("nnetar_p"), "Non-seasonal lags (p) (0 for auto if P=0, or specify e.g., 1, 2)", value = 1, min = 0, step = 1, width = '100%')),
+                column(6, numericInput(ns("nnetar_P"), "Seasonal lags (P) (0 for non-seasonal, or specify e.g., 1, 2 for seasonal)", value = 1, min = 0, step = 1, width = '100%'))
               ),
-              helpText("Set p/P to 0 to let nnetar choose automatically based on frequency. If both >0, specific lags are used."),
+              helpText("Set p/P to 0 to let nnetar choose automatically. If both >0, specific lags are used. Seasonal P is only effective if data frequency > 1 (e.g., daily/weekly)."),
               fluidRow(
-                column(6, selectInput(ns("nnetar_size_method"), "Hidden Layer Neurons (size) - Method", 
-                                     choices = c("Auto" = "auto", "Manual" = "manual"), selected = "auto", width = '100%')),
+                column(6, 
+                       selectInput(ns("nnetar_size_method"), "Hidden Layer Neurons (size) - Method", 
+                                   choices = c("Auto" = "auto", "Manual" = "manual"), selected = "auto", width = '100%'),
+                       helpText("If 'Auto': For seasonal models (P>0), size is approx. (p+P+1)/2. For non-seasonal (P=0, p>0), size is approx. (p+1)/2. If p=0 and P=0, nnetar attempts to choose p, P, and size.")
+                ),
                 column(6, conditionalPanel(
                   condition = paste0("input['", ns("nnetar_size_method"), "'] == 'manual'"),
                   numericInput(ns("nnetar_size_manual"), "Number of Hidden Neurons", value = 5, min = 1, step = 1, width = '100%')
@@ -147,7 +150,7 @@ mod_model_config_ui <- function(id){
               checkboxInput(ns("nnetar_lambda_auto"), "Box-Cox Lambda (Auto select)", value = TRUE),
               conditionalPanel(
                 condition = paste0("!input['", ns("nnetar_lambda_auto"), "']"),
-                numericInput(ns("nnetar_lambda_manual"), "Manual Lambda (0-1, or leave blank for no transform)", value = NA, min = 0, max = 1, step = 0.01, width = '100%')
+                numericInput(ns("nnetar_lambda_manual"), "Manual Lambda (0-1 for Box-Cox, leave NA/blank for no transform)", value = NA, min = 0, max = 1, step = 0.01, width = '100%')
               )
               # helpText("Note: nnetar internally scales inputs to [0,1] by default.")
             )

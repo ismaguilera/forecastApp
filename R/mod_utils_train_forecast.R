@@ -2243,55 +2243,99 @@ train_nnetar <- function(train_df, config, aggregation_level) {
   nnetar_args <- list(y = y_ts)
   
   # Lags (p, P)
-  # nnetar uses specific lags if p/P are vectors, or number of lags if scalar.
-  # For simplicity, we use scalar p, P as number of lags. nnetar default is to select p if p not given.
-  # If user sets p=0, it means they want nnetar to choose based on frequency (for P) or PACF (for p).
-  # Let nnetar handle default selection if p/P are not > 0.
-  if (!is.null(config$nnetar_p) && config$nnetar_p > 0) {
-      nnetar_args$p <- as.integer(config$nnetar_p)
-  }
-  if (!is.null(config$nnetar_P) && config$nnetar_P > 0 && freq_ts > 1) { # Only use P if seasonal
-      nnetar_args$P <- as.integer(config$nnetar_P)
-  }
+  p_val <- as.integer(config$nnetar_p %||% 0)
+  P_val <- as.integer(config$nnetar_P %||% 0)
 
-
-  # Size (hidden layer neurons)
-  if (config$nnetar_size_method == "manual" && !is.null(config$nnetar_size_manual) && config$nnetar_size_manual > 0) {
-    nnetar_args$size <- as.integer(config$nnetar_size_manual)
-  } # Else, nnetar determines size automatically (default (p+P+1)/2 or P if p not specified)
-
-  # Repeats
-  if (!is.null(config$nnetar_repeats) && config$nnetar_repeats >= 1) {
-    nnetar_args$repeats <- as.integer(config$nnetar_repeats)
-  }
-
-  # Lambda (Box-Cox)
-  if (config$nnetar_lambda_auto) {
-    nnetar_args$lambda <- "auto"
-  } else if (!is.null(config$nnetar_lambda_manual) && !is.na(config$nnetar_lambda_manual)) {
-    # Ensure it's within valid range or NULL
-    lambda_val <- as.numeric(config$nnetar_lambda_manual)
-    if (lambda_val >= 0 && lambda_val <= 1) {
-        nnetar_args$lambda <- lambda_val
-    } else {
-        nnetar_args$lambda <- NULL # No transform if manual value is invalid/NA
-        message("NNETAR: Manual lambda value invalid or NA, using NULL (no transformation).")
-    }
+  # Lambda Handling
+  lambda_val <- NULL
+  if (isTRUE(config$nnetar_lambda_auto)) {
+    lambda_val <- "auto"
+    message("NNETAR: Using lambda = 'auto'.")
   } else {
-     nnetar_args$lambda <- NULL # No transformation if auto is false and manual is NA/empty
+    if (!is.null(config$nnetar_lambda_manual) && !is.na(config$nnetar_lambda_manual) && nzchar(as.character(config$nnetar_lambda_manual))) {
+      manual_lambda <- as.numeric(config$nnetar_lambda_manual)
+      if (!is.na(manual_lambda) && manual_lambda >= 0 && manual_lambda <= 1) {
+        lambda_val <- manual_lambda
+        message(paste("NNETAR: Using manual lambda =", lambda_val))
+      } else {
+        message("NNETAR: Manual lambda value '", config$nnetar_lambda_manual, "' is invalid (must be 0-1). No transformation will be applied.")
+      }
+    } else {
+      message("NNETAR: No Box-Cox transformation (manual lambda is NA, empty or NULL).")
+    }
+  }
+  if (!is.null(lambda_val)) nnetar_args$lambda <- lambda_val
+
+  # Size (Hidden Neurons) Handling
+  size_val <- NULL
+  if (config$nnetar_size_method == "auto") {
+    message("NNETAR: Size method is 'auto'.")
+    if (P_val > 0 && freq_ts > 1) { # Seasonal model with P specified
+      # Heuristic: (p_eff + P_eff + 1)/2. If p_val=0, nnetar picks a p, so use 1 as placeholder.
+      p_eff_for_size <- if(p_val > 0) p_val else 1 
+      size_val <- max(1, floor(((p_eff_for_size) + P_val + 1) / 2))
+      message(paste("NNETAR: Auto size for seasonal (P>0, freq>1), p_val=", p_val, ", P_val=", P_val, ", calculated size_val=", size_val))
+    } else if (p_val > 0) { # Non-seasonal model, p specified
+      size_val <- max(1, floor((p_val + 1) / 2))
+      message(paste("NNETAR: Auto size for non-seasonal (p>0), p_val=", p_val, ", calculated size_val=", size_val))
+    } else { # p_val=0 and (P_val=0 or freq_ts<=1) -> nnetar chooses p, P (if applicable), and size
+      message("NNETAR: Auto size, p=0, P=0 (or non-seasonal P). Letting nnetar choose size.")
+      size_val <- NULL 
+    }
+  } else { # Manual size
+    size_val <- as.integer(config$nnetar_size_manual %||% 1) # Default to 1 if NULL/NA
+    size_val <- max(1, size_val) # Ensure at least 1
+    message(paste("NNETAR: Manual size specified: size_val=", size_val))
+  }
+  # Add size to args if determined
+  if (!is.null(size_val)) nnetar_args$size <- size_val
+
+  # p and P lag handling for nnetar call
+  if (P_val > 0 && freq_ts <= 1) {
+    warning(paste0("NNETAR: Seasonal lags (P=", P_val, ") specified but data frequency (", freq_ts, ") is not seasonal (>1). ",
+                   "Treating as non-seasonal; P will be ignored by nnetar or cause an error. Consider setting P=0."))
+    # nnetar itself will likely ignore P or error if m=1. We will proceed and let nnetar handle it.
+    # For clarity in args, we could effectively set P_val = 0 here for the call if freq_ts <=1
+    # However, the user did specify P > 0, so let nnetar decide.
+  }
+
+  if (p_val == 0 && P_val == 0) {
+    message("NNETAR: p=0, P=0. Letting nnetar choose p, P (if freq>1), and size (if auto).")
+    # Do not add p or P to nnetar_args if they are 0, nnetar will use its defaults.
+    # Size is already handled: if auto and p=0,P=0, size_val is NULL. If manual, it's set.
+  } else if (P_val > 0 && freq_ts > 1) { # Seasonal model, P specified
+    nnetar_args$P <- P_val
+    message(paste("NNETAR: Using P =", P_val, "for seasonal model."))
+    if (p_val > 0) { # If p also specified
+      nnetar_args$p <- p_val
+      message(paste("NNETAR: Using p =", p_val, "for non-seasonal part of seasonal model."))
+    } else {
+      message("NNETAR: p=0 for seasonal model. nnetar will select non-seasonal AR order.")
+    }
+  } else { # Non-seasonal model (either P_val=0 or P_val>0 but freq_ts<=1)
+    if (p_val > 0) {
+      nnetar_args$p <- p_val
+      message(paste("NNETAR: Using p =", p_val, "for non-seasonal model."))
+    } else {
+      message("NNETAR: p=0 for non-seasonal model. nnetar will select non-seasonal AR order.")
+    }
+    # If P_val > 0 but freq_ts <= 1, it's already warned above. nnetar will ignore P.
   }
   
-  # scale.inputs is TRUE by default in nnetar, no need to set unless to FALSE.
+  # Repeats
+  nnetar_args$repeats <- as.integer(config$nnetar_repeats %||% 20) # Default 20 if NULL
+
+  # scale.inputs is TRUE by default in nnetar.
 
   model <- NULL
   tryCatch({
-    message("NNETAR: Calling forecast::nnetar with args:")
+    message("NNETAR: Final arguments for forecast::nnetar call:")
     print(str(nnetar_args))
     model <- do.call(forecast::nnetar, nnetar_args)
     if (!is.null(model)) {
-        attr(model, "aggregation_level") <- aggregation_level # Store for reference
-        attr(model, "frequency_used") <- stats::frequency(y_ts) # Store actual frequency
-        message(paste("NNETAR model trained successfully. Model summary:", capture.output(print(model))[1]))
+        attr(model, "aggregation_level") <- aggregation_level
+        attr(model, "frequency_used") <- stats::frequency(y_ts)
+        message(paste("NNETAR model trained successfully. Model summary (first line):", capture.output(print(model))[1]))
     } else {
         message("NNETAR training returned NULL.")
     }
