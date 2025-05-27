@@ -43,49 +43,6 @@ mod_model_config_server <- function(id) {
       toggleState("ets_damped_str", condition = input$ets_manual)
     })
 
-    # --- ReactiveVal for default holidays ---
-    default_holidays_data <- reactiveVal(NULL)
-
-    observeEvent(input$load_chile_holidays, {
-      message("Load Default Holidays (Chile) button clicked.")
-      tryCatch({
-        # Construct the path relative to the app's root directory
-        # Assumes feriados.csv is in inst/extdata/
-        # Correct path for golem app structure when running from dev/run_dev.R or deployed
-        holidays_path <- app_sys("extdata", "feriados.csv")
-
-        if (file.exists(holidays_path)) {
-          df <- read.csv(holidays_path, fileEncoding="UTF-8-BOM") # Added encoding just in case
-          # Rename columns to 'ds' and 'holiday'
-          if ("Fecha" %in% names(df) && "Feriados_chilenos" %in% names(df)) {
-            df <- df %>%
-              dplyr::rename(ds = Fecha, holiday = Feriados_chilenos) %>%
-              dplyr::mutate(ds = as.Date(ds)) %>%
-              dplyr::select(ds, holiday) # Keep only these two
-          } else {
-            stop("Default holidays file must contain 'Fecha' and 'Feriados_chilenos' columns.")
-          }
-
-          # Ensure 'ds' column is Date type after renaming
-          if (!inherits(df$ds, "Date")) {
-             stop("'ds' column in default holidays could not be coerced to Date.")
-          }
-          default_holidays_data(df)
-          showNotification("Default Chilean holidays loaded and processed.", type = "message", duration = 5)
-          # Optionally, disable fileInput or change its label
-          # shinyjs::disable("prophet_holidays_file")
-        } else {
-          warning(paste("Default holidays file not found at:", holidays_path))
-          showNotification("Default holidays file not found.", type = "error", duration = 5)
-          default_holidays_data(NULL)
-        }
-      }, error = function(e) {
-        warning(paste("Error loading default holidays:", conditionMessage(e)))
-        showNotification(paste("Error loading default holidays:", conditionMessage(e)), type = "error", duration = 10)
-        default_holidays_data(NULL)
-      })
-    })
-
     # --- Return a list of reactive expressions for all inputs ---
     return(
       list(
@@ -97,6 +54,7 @@ mod_model_config_server <- function(id) {
         use_xgboost = reactive(input$use_xgboost),
         use_gam = reactive(input$use_gam),
         use_rf = reactive(input$use_rf),
+        use_nnetar = reactive({ input$use_nnetar }),
 
         # General
         forecast_horizon = reactive(input$forecastHorizon),
@@ -128,34 +86,7 @@ mod_model_config_server <- function(id) {
         prophet_growth = reactive(input$prophet_growth),
         prophet_capacity = reactive(input$prophet_capacity),
         prophet_changepoint_scale = reactive(input$prophet_changepoint_scale),
-        prophet_holidays_df = reactive(input$holidays_file),
-        # prophet_holidays_df = reactive({
-        #   # Prioritize uploaded file
-        #   if (!is.null(input$prophet_holidays_file) && !is.null(input$prophet_holidays_file$datapath)) {
-        #     message("Using uploaded custom holidays file.")
-        #     default_holidays_data(NULL) # Clear default if custom is uploaded
-        #     tryCatch({
-        #       df <- read.csv(input$prophet_holidays_file$datapath, sep = ",", fileEncoding = "UTF-8")
-        #       # Rename columns to 'ds' and 'holiday'
-        #       if ("Fecha" %in% names(df) && "Feriados_chilenos" %in% names(df)) {
-        #         df <- df %>%
-        #           dplyr::rename(ds = Fecha, holiday = Feriados_chilenos) %>%
-        #           dplyr::mutate(ds = as.Date(ds)) %>%
-        #           dplyr::select(ds, holiday) # Keep only these two
-        #       } else {
-        #         stop("El archivo de feriados debe contener las columnas 'Fecha' y 'Feriados_chilenos'.")
-        #       }
-        #       return(df)
-        #     }, error = function(e) {
-        #       showNotification(paste("Error al leer el archivo de feriados:", conditionMessage(e)), type = "error", duration = 10)
-        #       return(NULL)
-        #     })
-        #   } else if (!is.null(default_holidays_data())) {
-        #     message("Using default holidays data.")
-        #     return(default_holidays_data())
-        #   }
-        #   return(NULL)
-        # }),
+        prophet_holidays_df = reactive({ NULL }), # Simplified as per instructions
         prophet_regressors_df = reactive({
           req(input$prophet_regressors_file)
           tryCatch({ read.csv(input$prophet_regressors_file$datapath) }, error = function(e) NULL)
@@ -179,7 +110,16 @@ mod_model_config_server <- function(id) {
         # GAM
         gam_trend_type = reactive(input$gam_trend_type),
         gam_use_season_y = reactive(input$gam_use_season_y),
-        gam_use_season_w = reactive(input$gam_use_season_w)
+        gam_use_season_w = reactive(input$gam_use_season_w),
+
+        # NNETAR
+        nnetar_p = reactive({ input$nnetar_p }),
+        nnetar_P = reactive({ input$nnetar_P }),
+        nnetar_size_method = reactive({ input$nnetar_size_method }),
+        nnetar_size_manual = reactive({ input$nnetar_size_manual }),
+        nnetar_repeats = reactive({ input$nnetar_repeats }),
+        nnetar_lambda_auto = reactive({ input$nnetar_lambda_auto }),
+        nnetar_lambda_manual = reactive({ input$nnetar_lambda_manual })
       )
     )
   })

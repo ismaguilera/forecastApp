@@ -2177,6 +2177,227 @@ forecast_gam <- function(model, train_df, total_periods_needed, freq_str = "day"
 
   return(list(forecast = fcst_df, fitted = fitted_vals))
 }
+
+#' Train NNETAR Model
+#'
+#' Trains a Neural Network Autoregressive model using forecast::nnetar.
+#'
+#' @param train_df Tibble with 'ds' (Date) and 'y' (numeric) columns.
+#' @param config List containing NNETAR parameters: nnetar_p, nnetar_P, 
+#'   nnetar_size_method, nnetar_size_manual, nnetar_repeats, 
+#'   nnetar_lambda_auto, nnetar_lambda_manual.
+#' @param aggregation_level Character string indicating data frequency ('Daily', 'Weekly').
+#'
+#' @return A fitted NNETAR model object. Returns NULL on error.
+#' @noRd
+#' @import forecast dplyr lubridate stats
+train_nnetar <- function(train_df, config, aggregation_level) {
+  message("Starting train_nnetar")
+  # Basic validation
+  if (!is.data.frame(train_df) || !all(c("ds", "y") %in% names(train_df)) || nrow(train_df) < 3) {
+    warning("train_df for NNETAR invalid or too short (need at least 3 rows). Returning NULL.")
+    return(NULL)
+  }
+  if(!aggregation_level %in% c("Daily", "Weekly")) {
+    warning("Unknown aggregation level provided to train_nnetar. Seasonality might be incorrect.")
+    aggregation_level <- "Unknown" 
+  }
+
+  # Determine frequency for ts object
+  freq_ts <- 1
+  if (aggregation_level == "Daily") {
+    freq_ts <- 7
+  } else if (aggregation_level == "Weekly") {
+    freq_ts <- 52 
+  }
+  
+  # Ensure enough data for chosen frequency, especially if P > 0
+  if (config$nnetar_P > 0 && freq_ts > 1 && nrow(train_df) < 2 * freq_ts) {
+    warning(paste("NNETAR: Insufficient data (", nrow(train_df), ") for seasonal P with frequency =", freq_ts, ". Needs at least 2*freq_ts. Fitting non-seasonally or returning NULL."))
+    # Option: force P=0 or return NULL. Forcing P=0 might be safer.
+    config$nnetar_P <- 0 
+  }
+
+
+  # Create time series object
+  y_ts <- NULL
+  tryCatch({
+    start_date <- min(train_df$ds)
+    start_year <- lubridate::year(start_date)
+    ts_start_val <- if (freq_ts > 1) {
+      day_in_cycle <- switch(as.character(freq_ts),
+                             "7" = lubridate::wday(start_date, week_start = getOption("lubridate.week.start", 1)),
+                             "52" = lubridate::isoweek(start_date), # isoweek might be better for 52
+                             floor(lubridate::yday(start_date) / (365.25 / freq_ts)) + 1)
+      c(start_year, day_in_cycle)
+    } else { start_year }
+    y_ts <- stats::ts(train_df$y, frequency = freq_ts, start = ts_start_val)
+  }, error = function(e){
+    warning(paste("Failed to create ts object for NNETAR:", conditionMessage(e)))
+    return(NULL)
+  })
+  if(is.null(y_ts)) return(NULL)
+  message(paste("NNETAR: Created ts object with frequency:", stats::frequency(y_ts)))
+
+  # Construct arguments for nnetar()
+  nnetar_args <- list(y = y_ts)
+  
+  # Lags (p, P)
+  # nnetar uses specific lags if p/P are vectors, or number of lags if scalar.
+  # For simplicity, we use scalar p, P as number of lags. nnetar default is to select p if p not given.
+  # If user sets p=0, it means they want nnetar to choose based on frequency (for P) or PACF (for p).
+  # Let nnetar handle default selection if p/P are not > 0.
+  if (!is.null(config$nnetar_p) && config$nnetar_p > 0) {
+      nnetar_args$p <- as.integer(config$nnetar_p)
+  }
+  if (!is.null(config$nnetar_P) && config$nnetar_P > 0 && freq_ts > 1) { # Only use P if seasonal
+      nnetar_args$P <- as.integer(config$nnetar_P)
+  }
+
+
+  # Size (hidden layer neurons)
+  if (config$nnetar_size_method == "manual" && !is.null(config$nnetar_size_manual) && config$nnetar_size_manual > 0) {
+    nnetar_args$size <- as.integer(config$nnetar_size_manual)
+  } # Else, nnetar determines size automatically (default (p+P+1)/2 or P if p not specified)
+
+  # Repeats
+  if (!is.null(config$nnetar_repeats) && config$nnetar_repeats >= 1) {
+    nnetar_args$repeats <- as.integer(config$nnetar_repeats)
+  }
+
+  # Lambda (Box-Cox)
+  if (config$nnetar_lambda_auto) {
+    nnetar_args$lambda <- "auto"
+  } else if (!is.null(config$nnetar_lambda_manual) && !is.na(config$nnetar_lambda_manual)) {
+    # Ensure it's within valid range or NULL
+    lambda_val <- as.numeric(config$nnetar_lambda_manual)
+    if (lambda_val >= 0 && lambda_val <= 1) {
+        nnetar_args$lambda <- lambda_val
+    } else {
+        nnetar_args$lambda <- NULL # No transform if manual value is invalid/NA
+        message("NNETAR: Manual lambda value invalid or NA, using NULL (no transformation).")
+    }
+  } else {
+     nnetar_args$lambda <- NULL # No transformation if auto is false and manual is NA/empty
+  }
+  
+  # scale.inputs is TRUE by default in nnetar, no need to set unless to FALSE.
+
+  model <- NULL
+  tryCatch({
+    message("NNETAR: Calling forecast::nnetar with args:")
+    print(str(nnetar_args))
+    model <- do.call(forecast::nnetar, nnetar_args)
+    if (!is.null(model)) {
+        attr(model, "aggregation_level") <- aggregation_level # Store for reference
+        attr(model, "frequency_used") <- stats::frequency(y_ts) # Store actual frequency
+        message(paste("NNETAR model trained successfully. Model summary:", capture.output(print(model))[1]))
+    } else {
+        message("NNETAR training returned NULL.")
+    }
+  }, error = function(e) {
+    warning(paste("NNETAR model training failed:", conditionMessage(e)))
+    print(e) # Print full error for debugging
+    model <<- NULL
+  })
+  
+  message("Finished train_nnetar")
+  return(model)
+}
+
+#' Forecast using NNETAR Model
+#'
+#' Generates forecasts from a trained NNETAR model.
+#'
+#' @param model A fitted NNETAR model object.
+#' @param total_periods_needed Integer, number of periods to forecast ahead.
+#' @param train_end_date The last date in the training data (for date sequence generation).
+#' @param freq_str Character string frequency ('day', 'week').
+#'
+#' @return A list with '$forecast' (tibble) and '$fitted' (vector). Returns NULL on error.
+#' @noRd
+#' @import forecast dplyr tibble lubridate stats
+forecast_nnetar <- function(model, total_periods_needed, train_end_date, freq_str = "day") {
+  message("Starting forecast_nnetar")
+  if (is.null(model) || !inherits(model, "nnetar")) {
+    warning("Invalid NNETAR model object provided. Returning NULL.")
+    return(NULL)
+  }
+  if (!is.numeric(total_periods_needed) || total_periods_needed < 1) {
+    warning("Invalid total_periods_needed provided to forecast_nnetar. Returning NULL.")
+    return(NULL)
+  }
+
+  fcst_nnetar_obj <- NULL
+  fitted_vals <- NULL
+  fcst_df <- NULL
+
+  tryCatch({
+    message("NNETAR: Calling forecast::forecast...")
+    # NNETAR forecast might not always produce intervals if repeats=1 and certain conditions.
+    # Use level argument to request them.
+    fcst_nnetar_obj <- forecast::forecast(model, h = total_periods_needed, level = c(80, 95), PI = TRUE) 
+    
+    if(is.null(fcst_nnetar_obj)) stop("forecast::forecast for nnetar returned NULL")
+    
+    message("NNETAR: Extracting fitted values...")
+    fitted_vals <- stats::fitted(fcst_nnetar_obj) 
+    if(is.null(fitted_vals)) message("NNETAR: stats::fitted() returned NULL.")
+
+    message("NNETAR: Generating forecast dates...")
+    by_period <- switch(freq_str, "week" = lubridate::weeks(1), lubridate::days(1))
+    # Correct start_forecast_date based on freq_str relative to train_end_date
+    start_forecast_date <- if (freq_str == "week") {
+        train_end_date + lubridate::weeks(1)
+    } else {
+        train_end_date + lubridate::days(1)
+    }
+    forecast_dates <- seq.Date(from = start_forecast_date, by = freq_str, length.out = total_periods_needed)
+    
+    if(length(forecast_dates) != length(fcst_nnetar_obj$mean)) {
+        stop(paste0("NNETAR: Generated forecast_dates length (", length(forecast_dates), 
+                    ") does not match forecast horizon mean length (", length(fcst_nnetar_obj$mean), ")."))
+    }
+
+    fcst_df <- tibble::tibble(
+      ds = forecast_dates,
+      yhat = as.numeric(fcst_nnetar_obj$mean)
+    )
+    
+    # Add confidence intervals if they exist in the forecast object
+    if (!is.null(fcst_nnetar_obj$lower) && !is.null(fcst_nnetar_obj$upper)) {
+        if (all(c("80%", "95%") %in% colnames(fcst_nnetar_obj$lower))) {
+            fcst_df$yhat_lower_80 = as.numeric(fcst_nnetar_obj$lower[, "80%"])
+            fcst_df$yhat_upper_80 = as.numeric(fcst_nnetar_obj$upper[, "80%"])
+            fcst_df$yhat_lower_95 = as.numeric(fcst_nnetar_obj$lower[, "95%"])
+            fcst_df$yhat_upper_95 = as.numeric(fcst_nnetar_obj$upper[, "95%"])
+        } else {
+            message("NNETAR: 80% or 95% CI columns not found in forecast object. Intervals will be NA.")
+            # Add NA columns if expected but not found, to maintain structure
+            fcst_df$yhat_lower_80 = NA_real_
+            fcst_df$yhat_upper_80 = NA_real_
+            fcst_df$yhat_lower_95 = NA_real_
+            fcst_df$yhat_upper_95 = NA_real_
+        }
+    } else {
+        message("NNETAR: No confidence intervals (lower/upper) found in forecast object. Intervals will be NA.")
+        fcst_df$yhat_lower_80 = NA_real_
+        fcst_df$yhat_upper_80 = NA_real_
+        fcst_df$yhat_lower_95 = NA_real_
+        fcst_df$yhat_upper_95 = NA_real_
+    }
+    message("NNETAR: Forecast tibble created.")
+
+  }, error = function(e) {
+    warning(paste("NNETAR forecast generation failed:", conditionMessage(e)))
+    print(e) # Print full error for debugging
+    fcst_df <<- NULL # Ensure reset on error
+    fitted_vals <<- NULL
+  })
+  
+  message("Finished forecast_nnetar")
+  return(list(forecast = fcst_df, fitted = fitted_vals))
+}
 #' Train Random Forest Model
 #'
 #' Trains a Random Forest model using the ranger package.

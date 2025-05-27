@@ -23,6 +23,7 @@ mod_model_config_ui <- function(id){
         checkboxInput(ns("use_xgboost"), "XGBoost", value = TRUE),
         checkboxInput(ns("use_gam"), "GAM", value = TRUE),
         checkboxInput(ns("use_rf"), "Random Forest", value = TRUE),
+        checkboxInput(ns("use_nnetar"), "NNETAR", value = FALSE),
         hr(),
         numericInput(ns("forecastHorizon"), "Forecast Horizon (Periods):", value = default_horizon, min = 1, step = 1, max = 365),
         actionButton(ns("runForecast"), "Run Forecast", icon = icon("play-circle"), class = "btn-primary btn-block")
@@ -85,8 +86,6 @@ mod_model_config_ui <- function(id){
               numericInput(ns("prophet_capacity"), "Capacity (Cap for Logistic Growth):", value = 100000)
             ),
             numericInput(ns("prophet_changepoint_scale"), "Changepoint Prior Scale:", value = 0.05, min = 0.001, max = 0.5, step = 0.01),
-            # actionButton(ns("load_chile_holidays"), "Load Default Holidays (Chile)", icon = icon("calendar-check")),
-            # fileInput(ns("prophet_holidays_file"), "Upload Custom Holidays CSV (optional, cols: holiday, ds, [lower_window, upper_window])", accept = ".csv"),
             fileInput(ns("prophet_regressors_file"), "Upload External Regressors CSV (optional, cols: ds, regressor1, ...)", accept = ".csv")
           ),
           # XGBoost Panel
@@ -117,6 +116,41 @@ mod_model_config_ui <- function(id){
             selectInput(ns("gam_trend_type"), "Trend Type:", choices = c("Linear" = "linear", "Smooth (Spline)" = "smooth"), selected = "linear"),
             checkboxInput(ns("gam_use_season_y"), "Include Yearly Seasonality (Day of Year)", value = TRUE),
             checkboxInput(ns("gam_use_season_w"), "Include Weekly Seasonality (Day of Week)", value = TRUE)
+          ),
+          # NNETAR Panel
+          bslib::accordion_panel(
+            title = "NNETAR Parameters", 
+            value = "NNETAR", 
+            # icon = icon("brain"), // Example icon
+            id = ns("nnetar_accordion_panel"),
+            conditionalPanel(
+              condition = paste0("input['", ns("use_nnetar"), "'] == true"),
+              tags$p("Neural Network Autoregressive Model. Predicts based on lagged values of the time series."),
+              hr(),
+              h5("Model Structure:"),
+              fluidRow(
+                column(6, numericInput(ns("nnetar_p"), "Non-seasonal lags (p)", value = 1, min = 0, step = 1, width = '100%')),
+                column(6, numericInput(ns("nnetar_P"), "Seasonal lags (P)", value = 1, min = 0, step = 1, width = '100%'))
+              ),
+              helpText("Set p/P to 0 to let nnetar choose automatically based on frequency. If both >0, specific lags are used."),
+              fluidRow(
+                column(6, selectInput(ns("nnetar_size_method"), "Hidden Layer Neurons (size) - Method", 
+                                     choices = c("Auto" = "auto", "Manual" = "manual"), selected = "auto", width = '100%')),
+                column(6, conditionalPanel(
+                  condition = paste0("input['", ns("nnetar_size_method"), "'] == 'manual'"),
+                  numericInput(ns("nnetar_size_manual"), "Number of Hidden Neurons", value = 5, min = 1, step = 1, width = '100%')
+                ))
+              ),
+              numericInput(ns("nnetar_repeats"), "Repeats (for stability)", value = 20, min = 1, step = 5, width = '100%'),
+              hr(),
+              h5("Data Preprocessing:"),
+              checkboxInput(ns("nnetar_lambda_auto"), "Box-Cox Lambda (Auto select)", value = TRUE),
+              conditionalPanel(
+                condition = paste0("!input['", ns("nnetar_lambda_auto"), "']"),
+                numericInput(ns("nnetar_lambda_manual"), "Manual Lambda (0-1, or leave blank for no transform)", value = NA, min = 0, max = 1, step = 0.01, width = '100%')
+              )
+              # helpText("Note: nnetar internally scales inputs to [0,1] by default.")
+            )
           )
         ) # End bslib::accordion
       ) # End mainPanel
