@@ -425,6 +425,50 @@ mod_model_summary_server <- function(id, reactive_run_summary_list){ # Simplifie
           )
         }, # End RF case
 
+        "NNETAR" = {
+          cfg <- model_info$config
+          # Determine lambda display value
+          lambda_display <- if (isTRUE(cfg$nnetar_lambda_auto)) "auto" else (cfg$nnetar_lambda_manual %||% "N/A")
+          
+          # Determine size display value
+          size_display <- if (cfg$nnetar_size_method == "auto") {
+            # The actual auto-calculated size might be part of fitted_method or needs to be extracted if available
+            # For now, just indicate auto. If model_info$fitted_method contains it like NNAR(p,P,k)[freq], we can parse k.
+            "auto" 
+          } else {
+            as.character(cfg$nnetar_size_manual %||% "N/A")
+          }
+
+          tagList(
+            tags$p(tags$strong("Model Type:"), " NNETAR (Neural Network Autoregression)"),
+            tags$p(tags$strong("Configuration:")),
+            tags$ul(
+              tags$li(paste("Non-seasonal Lags (p):", cfg$nnetar_p %||% "N/A")),
+              tags$li(paste("Seasonal Lags (P):", cfg$nnetar_P %||% "N/A")),
+              tags$li(paste("Hidden Layer Size Calculation:", cfg$nnetar_size_method %||% "N/A")),
+              if(cfg$nnetar_size_method == "manual") {
+                tags$li(paste("Manual Hidden Layer Size (size):", size_display))
+              },
+              tags$li(paste("Number of Networks to Average (repeats):", cfg$nnetar_repeats %||% "N/A")),
+              tags$li(paste("Box-Cox Transformation (lambda):", lambda_display))
+            ),
+            tags$p(tags$strong("Fitted Model Details:")),
+            tags$ul(
+              tags$li(paste("Fitted Model:", model_info$fitted_method %||% "N/A")),
+              tags$li(paste("Frequency Used:", model_info$frequency_used %||% "N/A"))
+            ),
+            tags$p(tags$strong("Interpretation:")),
+            tags$ul(
+              tags$li("NNETAR is a feed-forward neural network model that uses lagged values of the time series as inputs."),
+              tags$li(tags$code("p"), "(Non-seasonal lags): Number of past non-seasonal observations used as predictors."),
+              tags$li(tags$code("P"), "(Seasonal lags): Number of past seasonal observations (e.g., same period last year/season) used as predictors."),
+              tags$li(tags$code("Size"), "(Hidden Layer Nodes): Number of nodes in the single hidden layer. 'auto' typically calculates as (p+P+1)/2. More nodes allow for more complex patterns but risk overfitting."),
+              tags$li(tags$code("Repeats"), ": The model is fitted multiple times (e.g., ", cfg$nnetar_repeats %||% "N/A", " times) with different random starting weights, and the results are averaged to improve robustness and avoid poor local optima."),
+              tags$li(tags$code("Lambda"), ": Parameter for Box-Cox transformation. 'auto' selects lambda automatically; a specific value applies that transformation to stabilize variance.")
+            )
+          )
+        }, # End NNETAR case
+
         # Default case if model_name is not recognized
         {
           tags$p("Summary not available for this model type.")

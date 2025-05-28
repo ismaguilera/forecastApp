@@ -1494,7 +1494,7 @@ app_server <- function(input, output, session) {
       tryCatch({
         saveRDS(session_state_to_save, file = file)
         shiny::removeModal()
-        shiny::showNotification(paste("Session saved to", basename(file)), type = "success", duration = 5)
+        shiny::showNotification(paste("Session saved to", basename(file)), type = "message", duration = 5)
       }, error = function(e_save) {
         shiny::showNotification(paste("Error saving session:", e_save$message), type = "error", duration = 10)
       })
@@ -1647,6 +1647,11 @@ app_server <- function(input, output, session) {
 
       removeModal()
       shiny::removeNotification(id = "loading_session_notif")
+      
+      # Trigger update for eventReactives depending on r$run_id
+      if (!is.null(r$run_id) && r$run_id > 0) {
+        r$run_id <- r$run_id + 0.0001 
+      }
       
       # Construct the notification message
       data_file_msg <- if (!is.null(r$loaded_session_data_file_name)) paste0("main data file ('", r$loaded_session_data_file_name, "')") else "main data file"
