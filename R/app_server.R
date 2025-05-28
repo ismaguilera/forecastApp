@@ -52,7 +52,8 @@ app_server <- function(input, output, session) {
     reactive_test_df = preprocess_reactives$reactive_test_df,
     reactive_forecast_list = eventReactive(r$run_id, { r$forecast_list }), # Pass the list of forecast tibbles, triggered by run_id
     reactive_global_holidays_data = r$global_holidays_data # Pass the reactiveVal directly
-  )
+  ) -> plot_obj_reactive # Capture the returned reactive plot object
+
   # mod_model_summary_server(
   #   "model_summary_1",
   #   reactive_model_name = reactive({ r$model_name }), # Pass reactive model name
@@ -75,7 +76,7 @@ app_server <- function(input, output, session) {
   mod_results_table_server(
     "results_table_1",
     reactive_metrics_summary = reactive({ r$metrics_summary })
-  )
+  ) -> metrics_df_reactive # Capture the returned reactive metrics data frame
 
   # mod_extra_plots_server(
   #   "extra_plots_1",
@@ -1691,6 +1692,201 @@ app_server <- function(input, output, session) {
     reactive_global_holidays_data = r$global_holidays_data 
   )
   # --- End Validation Module Server Call ---
+
+  # --- Report Generation Download Handler ---
+  output$downloadReport <- downloadHandler(
+    filename = function() {
+      paste0("forecast_report_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".", input$reportFormat)
+    },
+    content = function(file) {
+      shiny::withProgress(message = paste("Generating", toupper(input$reportFormat), "report..."), value = 0, {
+        
+        shiny::incProgress(0.1, detail = "Preparing data...")
+        # Ensure all required reactive data is available
+        req(
+          plot_obj_reactive(), 
+          metrics_df_reactive(), 
+          r$run_models_summary,
+          r$run_id > 0 # Ensure models have been run
+        )
+        
+        # Generate Model Summaries Text
+        model_summaries_for_report <- list()
+        if (length(r$run_models_summary) > 0) {
+          shiny::incProgress(0.2, detail = "Formatting model summaries...")
+          for (model_name_iter in names(r$run_models_summary)) { # Renamed to avoid conflict
+            summary_entry <- r$run_models_summary[[model_name_iter]]
+            if (isTRUE(summary_entry$success)) {
+              
+              # Basic Info
+              text_summary_parts <- c(
+                paste0("Model: ", model_name_iter),
+                paste0("Aggregation: ", summary_entry$aggregation_level %||% "N/A")
+              )
+              
+              # ARIMA Specifics
+              if (model_name_iter == "ARIMA") {
+                if (!is.null(summary_entry$arima_order)) {
+                  text_summary_parts <- c(text_summary_parts, paste0("ARIMA Order (auto/manual): ", paste(names(summary_entry$arima_order), summary_entry$arima_order, collapse=", ")))
+                }
+                if (!is.null(summary_entry$frequency_used)) {
+                  text_summary_parts <- c(text_summary_parts, paste0("Frequency Used: ", summary_entry$frequency_used))
+                }
+                # Add manual ARIMA config if auto was false
+                if(isFALSE(summary_entry$config$auto)){
+                    manual_order_str <- paste0("p=", summary_entry$config$p, ", d=", summary_entry$config$d, ", q=", summary_entry$config$q)
+                    if(isTRUE(summary_entry$config$seasonal)){
+                        manual_order_str <- paste0(manual_order_str, ", P=", summary_entry$config$P, ", D=", summary_entry$config$D, ", Q=", summary_entry$config$Q, ", Period=", summary_entry$config$period)
+                    }
+                    text_summary_parts <- c(text_summary_parts, paste0("Manual Config: ", manual_order_str))
+                }
+              }
+              
+              # ETS Specifics
+              if (model_name_iter == "ETS" && !is.null(summary_entry$fitted_method)) {
+                text_summary_parts <- c(text_summary_parts, paste0("ETS Method: ", summary_entry$fitted_method))
+                if(isTRUE(summary_entry$config$manual)){
+                    manual_spec_str <- paste0("E=",summary_entry$config$ets_e, ", T=",summary_entry$config$ets_t, ", S=",summary_entry$config$ets_s, ", Damped=",summary_entry$config$ets_damped_str)
+                    text_summary_parts <- c(text_summary_parts, paste0("Manual Config: ", manual_spec_str))
+                }
+              }
+              
+              # TBATS Specifics
+              if (model_name_iter == "TBATS" && !is.null(summary_entry$fitted_method)) {
+                 text_summary_parts <- c(text_summary_parts, paste0("TBATS Method: ", summary_entry$fitted_method))
+              }
+              
+              # Prophet Specifics
+              if (model_name_iter == "Prophet" && !is.null(summary_entry$config)) {
+                cfg <- summary_entry$config
+                prophet_details <- paste0(
+                  "Growth: ", cfg$growth %||% "N/A", 
+                  ", Yearly: ", cfg$yearly %||% "N/A", 
+                  ", Weekly: ", cfg$weekly %||% "N/A", 
+                  ", Daily: ", cfg$daily %||% "N/A"
+                )
+                if(cfg$growth == "logistic" && !is.null(cfg$capacity)){
+                    prophet_details <- paste0(prophet_details, ", Capacity: ", cfg$capacity)
+                }
+                text_summary_parts <- c(text_summary_parts, prophet_details)
+                if(isTRUE(cfg$used_holidays)) text_summary_parts <- c(text_summary_parts, "Used Holidays: Yes")
+                if(isTRUE(cfg$used_regressors)) text_summary_parts <- c(text_summary_parts, "Used Regressors: Yes")
+
+              }
+              
+              # XGBoost Specifics
+              if (model_name_iter == "XGBoost" && !is.null(summary_entry$config)) {
+                if(isTRUE(summary_entry$tuning_enabled) && !is.null(summary_entry$tuned_params)){
+                    tuned_str <- paste(names(summary_entry$tuned_params), sapply(summary_entry$tuned_params, function(x) if(is.numeric(x)) round(x, 4) else x), collapse="; ")
+                    text_summary_parts <- c(text_summary_parts, paste0("Tuned Params: ", tuned_str))
+                } else {
+                    cfg <- summary_entry$config
+                    xgb_details <- paste0("Rounds: ", cfg$nrounds, ", Eta: ", cfg$eta, ", Depth: ", cfg$max_depth) # etc.
+                    text_summary_parts <- c(text_summary_parts, paste0("Config: ", xgb_details))
+                }
+              }
+              
+              # RF Specifics
+              if (model_name_iter == "RF" && !is.null(summary_entry$config)) {
+                if(isTRUE(summary_entry$tuning_enabled) && !is.null(summary_entry$tuned_params)){
+                    tuned_rf_str <- paste(names(summary_entry$tuned_params), sapply(summary_entry$tuned_params, function(x) if(is.numeric(x)) round(x, 4) else x), collapse="; ")
+                    text_summary_parts <- c(text_summary_parts, paste0("Tuned Params: ", tuned_rf_str))
+                } else {
+                    cfg <- summary_entry$config
+                    rf_details <- paste0("Trees: ", cfg$rf_num_trees, ", mtry: ", cfg$rf_mtry, ", MinNode: ", cfg$rf_min_node_size)
+                    text_summary_parts <- c(text_summary_parts, paste0("Config: ", rf_details))
+                }
+              }
+
+              # GAM Specifics
+              if (model_name_iter == "GAM" && !is.null(summary_entry$config)) {
+                  cfg <- summary_entry$config
+                  gam_details <- paste0("Trend: ", cfg$smooth_trend %||% "N/A", ", SeasonY: ", cfg$use_season_y %||% "N/A", ", SeasonW: ", cfg$use_season_w %||% "N/A")
+                  text_summary_parts <- c(text_summary_parts, gam_details)
+              }
+              
+              # NNETAR Specifics
+              if (model_name_iter == "NNETAR" && !is.null(summary_entry$fitted_method)) {
+                  text_summary_parts <- c(text_summary_parts, paste0("NNETAR Method: ", summary_entry$fitted_method))
+                  if (!is.null(summary_entry$frequency_used)) {
+                      text_summary_parts <- c(text_summary_parts, paste0("Frequency Used: ", summary_entry$frequency_used))
+                  }
+                  # Add more config details if needed from summary_entry$config
+              }
+
+              model_summaries_for_report[[length(model_summaries_for_report) + 1]] <- list(
+                model_name = model_name_iter, 
+                summary_text = paste(text_summary_parts, collapse = "\n")
+              )
+            }
+          }
+        }
+        
+        shiny::incProgress(0.4, detail = "Setting up report template...")
+        # Define temporary file paths
+        temp_report_path <- tempfile(fileext = ".Rmd")
+        temp_output_path <- tempfile(fileext = paste0(".", input$reportFormat))
+        
+        # Copy the R Markdown template to the temporary path
+        # Using system.file as a robust way to get package files
+        # Assuming the package name is 'forecastApp' as per golem structure
+        template_origin_path <- system.file("rmarkdown/templates/report_template.Rmd", package = "forecastApp")
+        if (!file.exists(template_origin_path)) {
+            stop("Report template not found. Expected at: ", template_origin_path)
+        }
+        file.copy(template_origin_path, temp_report_path, overwrite = TRUE)
+        
+        # Prepare parameters for R Markdown
+        params_list <- list(
+          report_title = paste("Forecast Report -", toupper(input$reportFormat)),
+          forecast_plot = plot_obj_reactive(),    # The actual plotly object
+          metrics_table = metrics_df_reactive(),  # The data frame
+          model_summaries = model_summaries_for_report,
+          run_date = Sys.time()
+        )
+        
+        shiny::incProgress(0.6, detail = "Rendering report...")
+        # Render the R Markdown document
+        tryCatch({
+          rmarkdown::render(
+            input = temp_report_path,
+            output_format = if (input$reportFormat == "pdf") "pdf_document" else "html_document",
+            output_file = temp_output_path,
+            params = params_list,
+            envir = new.env(parent = globalenv()) # Render in a clean environment
+          )
+          
+          shiny::incProgress(0.9, detail = "Finalizing...")
+          # Copy the rendered file to the 'file' argument of downloadHandler
+          file.copy(temp_output_path, file, overwrite = TRUE)
+          shiny::showNotification("Report generated successfully!", type = "message", duration = 5)
+          
+        }, error = function(e) {
+          error_msg <- paste("Error generating report:", e$message)
+          # Log full error to console for debugging
+          print(error_msg) 
+          print(e)
+          shiny::showNotification(error_msg, type = "error", duration = 15)
+          # Create an empty file to prevent Shiny download error
+          # file.create(file) 
+          # Return NULL or an empty file might be better handled by Shiny's downloadHandler
+          # For now, let Shiny handle the error if file isn't copied.
+        }, finally = {
+            # Clean up temporary files
+            if (file.exists(temp_report_path)) unlink(temp_report_path)
+            if (file.exists(temp_output_path)) unlink(temp_output_path)
+        })
+      }) # End withProgress
+    },
+    contentType = function() { # Dynamic content type
+      if (input$reportFormat == "pdf") {
+        "application/pdf"
+      } else { # HTML
+        "text/html"
+      }
+    }
+  )
+  # --- End Report Generation ---
 
 }) # End app_server
 }
