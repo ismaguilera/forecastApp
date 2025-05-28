@@ -2,21 +2,46 @@
 
 #' Train ARIMA Model
 #'
-#' Trains an ARIMA model using forecast::Arima or forecast::auto.arima.
+#' Trains an ARIMA model using `forecast::Arima` or `forecast::auto.arima`.
+#' The function can handle non-seasonal and seasonal ARIMA models, and can incorporate
+#' external regressors derived from a provided holidays dataframe.
 #'
-#' @param train_df Tibble with 'ds' (Date) and 'y' (numeric) columns.
-#' @param config List containing ARIMA parameters: auto (logical), p, d, q,
-#'   seasonal (logical), P, D, Q, period.
-#' @param aggregation_level Character string indicating data frequency ('Daily', 'Weekly').
+#' @param train_df A tibble with 'ds' (Date) and 'y' (numeric) columns representing the training data.
+#' @param config A list containing ARIMA parameters:
+#'   \itemize{
+#'     \item `auto`: Logical. If `TRUE`, uses `forecast::auto.arima` to find the best model.
+#'           If `FALSE`, uses `forecast::Arima` with specified orders.
+#'     \item `p`: Integer. The order of the non-seasonal AR part.
+#'     \item `d`: Integer. The degree of non-seasonal differencing.
+#'     \item `q`: Integer. The order of the non-seasonal MA part.
+#'     \item `seasonal`: Logical. If `TRUE`, a seasonal model is fitted.
+#'     \item `P`: Integer. The order of the seasonal AR part.
+#'     \item `D`: Integer. The degree of seasonal differencing.
+#'     \item `Q`: Integer. The order of the seasonal MA part.
+#'     \item `period`: Integer. The seasonal period (e.g., 7 for daily data with weekly seasonality,
+#'           52 for weekly data with yearly seasonality). This is used if `seasonal` is `TRUE` and `auto` is `FALSE`.
+#'           If `auto` is `TRUE`, `period` is inferred from `aggregation_level`.
+#'   }
+#' @param aggregation_level Character string. Indicates data frequency ("Daily" or "Weekly").
+#'   This influences the automatic determination of `frequency` for the `ts` object (e.g., 7 for "Daily", 52 for "Weekly")
+#'   when `config$auto` is `TRUE` and `config$seasonal` is `TRUE`.
+#' @param holidays_df Optional. A tibble with 'ds' (Date) and 'holiday' (character/factor) columns.
+#'   If provided, it's processed to create an `xreg` matrix for the ARIMA model.
+#'   For "Daily" aggregation, dummy variables are created for each holiday.
+#'   For "Weekly" aggregation, a single regressor indicates if any holiday occurred within the week.
 #'
-#' @return A fitted ARIMA model object (from forecast package). Returns NULL on error.
+#' @return A fitted ARIMA model object (class `ARIMA` or `forecast_ARIMA` from the `forecast` package).
+#'   Returns `NULL` on error (e.g., insufficient data, invalid configuration).
+#'   The returned model object may have attributes:
+#'   \itemize{
+#'     \item `aggregation_level`: The `aggregation_level` used.
+#'     \item `holiday_regressor_type`: Type of holiday regressor used ("daily_dummies", "weekly_aggregated", or "none").
+#'   }
 #'
 #' @noRd
 #'
 #' @import forecast dplyr tibble lubridate tidyr
-#' @importFrom stats ts frequency start fitted cycle time
-#' @importFrom lubridate year yday weeks
-#' @importFrom rlang %||%
+#' @importFrom stats ts frequency start fitted cycle time model.matrix
 train_arima <- function(train_df, config, aggregation_level, holidays_df = NULL) {
   message("Starting train_arima")
   # Basic validation
@@ -263,17 +288,27 @@ train_arima <- function(train_df, config, aggregation_level, holidays_df = NULL)
 #' Generates forecasts from a trained ARIMA model.
 #'
 #' @param model A fitted ARIMA model object from `train_arima`.
-#' @param horizon Integer, number of periods to forecast ahead.
+#' @param total_periods_needed Integer, number of periods to forecast ahead.
+#' @param train_end_date Date. The last date of the training data.
+#' @param freq_str Character string. Frequency for date sequence generation ('day', 'week').
+#' @param future_xreg Optional matrix. External regressors for the forecast period.
+#'   If the model was trained with xreg and `future_xreg` is not provided, this function
+#'   will attempt to generate it based on `holidays_df` and model attributes.
+#' @param holidays_df Optional. A tibble with 'ds' and 'holiday' columns, used to generate
+#'   `future_xreg` if it's not directly provided and the model used holidays.
 #'
-#' @return A tibble with columns: 'ds', 'yhat', 'yhat_lower_80', 'yhat_upper_80',
-#'   'yhat_lower_95', 'yhat_upper_95'. Returns NULL on error.
+#' @return A list containing:
+#'   \itemize{
+#'     \item `forecast`: A tibble with columns: 'ds', 'yhat', 'yhat_lower_80', 'yhat_upper_80',
+#'           'yhat_lower_95', 'yhat_upper_95'.
+#'     \item `fitted`: A numeric vector of fitted values from the model.
+#'   }
+#'   Returns `NULL` if `model` is invalid or an error occurs.
 #'
 #' @noRd
 #'
-#' @import forecast
-#' @import dplyr
-#' @import tibble
-#' @importFrom stats time frequency cycle
+#' @import forecast dplyr tibble lubridate
+#' @importFrom stats time frequency cycle fitted
 forecast_arima <- function(model, total_periods_needed, train_end_date, freq_str = "day", future_xreg = NULL, holidays_df = NULL) {
   if (is.null(model) || !inherits(model, c("ARIMA", "forecast_ARIMA"))) {
     message("Starting forecast_arima - Invalid model")
@@ -456,18 +491,36 @@ forecast_arima <- function(model, total_periods_needed, train_end_date, freq_str
 
 #' Train ETS Model
 #'
-#' Trains an ETS model using forecast::ets or forecast::stlm (for high freq).
-#' Allows automatic or manual selection for the underlying ETS model.
+#' Trains an Exponential Smoothing State Space Model (ETS) using `forecast::ets`.
+#' For higher frequency data (e.g., daily data with yearly seasonality, frequency > 24),
+#' it may use `forecast::stlf`, which performs an STL decomposition and then fits an
+#' ETS model to the seasonally adjusted data.
 #'
-#' @param train_df Tibble with 'ds' (Date) and 'y' (numeric) columns.
-#' @param config List containing ETS parameters: manual (logical), ets_e, ets_t, ets_s
-#'   components ('Z','A','M','N'), ets_damped_str ('NULL', 'TRUE', 'FALSE').
-#' @param aggregation_level Character string indicating data frequency ('Daily', 'Weekly').
+#' @param train_df A tibble with 'ds' (Date) and 'y' (numeric) columns for training.
+#' @param config A list containing ETS parameters:
+#'   \itemize{
+#'     \item `manual`: Logical. If `TRUE`, uses manually specified ETS components.
+#'           If `FALSE` (default), components are automatically selected by `forecast::ets` (model="ZZZ").
+#'     \item `ets_e`: Character. Error component ('A'-Additive, 'M'-Multiplicative, 'Z'-Auto).
+#'     \item `ets_t`: Character. Trend component ('N'-None, 'A'-Additive, 'M'-Multiplicative, 'Z'-Auto).
+#'     \item `ets_s`: Character. Seasonality component ('N'-None, 'A'-Additive, 'M'-Multiplicative, 'Z'-Auto).
+#'     \item `ets_damped_str`: Character. Damping parameter ('TRUE', 'FALSE', 'NULL' for auto).
+#'           Note: internally converted to logical `TRUE`, `FALSE`, or `NULL`.
+#'   }
+#' @param aggregation_level Character string. Data frequency ("Daily", "Weekly").
+#'   This influences the `frequency` of the `ts` object (7 for "Daily", 52 for "Weekly").
+#'   If the determined frequency is > 24, `forecast::stlf` is used; otherwise, `forecast::ets` is used directly.
+#' @param total_periods_needed Integer. The total number of periods for which forecasts will eventually be needed.
+#'   This is passed as the `h` argument to `forecast::stlf` if `stlf` is used, as `stlf`
+#'   returns a forecast object directly.
 #'
-#' @return A fitted model object ('ets' or 'stlm'). Returns NULL on error.
+#' @return A fitted model object. This can be an `ets` object (if `forecast::ets` was used directly)
+#'   or a `forecast` object (if `forecast::stlf` was used, as `stlf` returns a forecast object
+#'   containing the underlying model and the forecast). Returns `NULL` on error.
+#'
 #' @noRd
 #' @import forecast dplyr lubridate stats
-train_ets <- function(train_df, config, aggregation_level, total_periods_needed) { # config currently unused
+train_ets <- function(train_df, config, aggregation_level, total_periods_needed) {
   message("Starting train_ets")
   # Basic validation
   if (!is.data.frame(train_df) || !all(c("ds", "y") %in% names(train_df))) {
@@ -898,17 +951,30 @@ train_ets <- function(train_df, config, aggregation_level, total_periods_needed)
 
 
 
-#' Forecast using ETS Model OR Extract from STLF Result
+#' Forecast using ETS Model or Extract from STLF Result
 #'
-#' Generates forecasts from a trained ETS model or extracts forecast/fitted
-#' values from an STLF result object.
+#' Generates forecasts from a trained ETS model or extracts forecast and fitted
+#' values if the input is already a `forecast` object (e.g., from `stlf`).
 #'
-#' @param model_or_fcst A fitted 'ets' model object OR a 'forecast' object from `train_ets`.
-#' @param total_periods_needed Integer, TOTAL number of periods forecast is needed for.
-#' @param train_end_date The last date present in the training data.
-#' @param freq_str Character string frequency ('day', 'week').
+#' @param model_or_fcst A fitted `ets` model object (from `forecast::ets`) or a `forecast`
+#'   object (typically returned by `train_ets` if `forecast::stlf` was used).
+#' @param total_periods_needed Integer. The total number of periods for which the forecast is required.
+#'   If `model_or_fcst` is an `ets` model, `forecast()` is called with `h = total_periods_needed`.
+#'   If `model_or_fcst` is a `forecast` object, this parameter is used to validate that the
+#'   existing forecast horizon matches the requirement.
+#' @param train_end_date Date. The last date of the training data, used to generate the
+#'   date sequence for the forecast tibble.
+#' @param freq_str Character string. The frequency of the time series ('day', 'week'),
+#'   used for generating the date sequence.
 #'
-#' @return A list containing `$forecast` (tibble) and `$fitted` (vector). Returns NULL on error.
+#' @return A list containing two elements:
+#'   \itemize{
+#'     \item `forecast`: A tibble with columns 'ds' (Date), 'yhat' (point forecast),
+#'           'yhat_lower_80', 'yhat_upper_80', 'yhat_lower_95', 'yhat_upper_95' (confidence intervals).
+#'     \item `fitted`: A numeric vector of fitted values from the model.
+#'   }
+#'   Returns `NULL` if `model_or_fcst` is invalid or if an error occurs during processing.
+#'
 #' @noRd
 #' @import forecast dplyr tibble lubridate stats
 forecast_ets <- function(model_or_fcst, total_periods_needed, train_end_date, freq_str = "day") {
@@ -1078,13 +1144,21 @@ forecast_ets <- function(model_or_fcst, total_periods_needed, train_end_date, fr
 
 #' Train TBATS Model
 #'
-#' Trains a TBATS model using forecast::tbats.
+#' Trains a TBATS (Trigonometric Box-Cox transform, ARMA errors, Trend, and Seasonal components)
+#' model using `forecast::tbats`. This model is suitable for complex time series with
+#' multiple seasonalities.
 #'
-#' @param train_df Tibble with 'ds' (Date) and 'y' (numeric) columns.
-#' @param config List for potential future TBATS configurations (currently unused).
-#' @param aggregation_level Character string indicating data frequency ('Daily', 'Weekly').
+#' @param train_df A tibble with 'ds' (Date) and 'y' (numeric) columns representing the training data.
+#' @param config A list for potential future TBATS configurations (currently unused).
+#'   The function currently uses automatic model selection within `forecast::tbats`.
+#' @param aggregation_level Character string. Indicates data frequency ("Daily" or "Weekly").
+#'   This influences the primary `frequency` of the `ts` object (7 for "Daily", 52 for "Weekly")
+#'   and can provide a hint for the `seasonal.periods` argument in `forecast::tbats`
+#'   (e.g., `c(7, 365.25)` for daily data if series is long enough).
 #'
-#' @return A fitted TBATS model object (from forecast package). Returns NULL on error.
+#' @return A fitted TBATS model object (class `tbats` from the `forecast` package).
+#'   Returns `NULL` on error (e.g., insufficient data).
+#'
 #' @noRd
 #' @import forecast dplyr lubridate stats
 train_tbats <- function(train_df, config, aggregation_level) { # config currently unused
@@ -1201,12 +1275,21 @@ train_tbats <- function(train_df, config, aggregation_level) { # config currentl
 #'
 #' Generates forecasts from a trained TBATS model.
 #'
-#' @param model A fitted TBATS model object from `train_tbats`.
-#' @param total_periods_needed Integer, TOTAL number of periods to forecast ahead.
-#' @param train_end_date The last date present in the training data.
-#' @param freq_str Character string frequency ('day', 'week').
+#' @param model A fitted `tbats` model object from `train_tbats`.
+#' @param total_periods_needed Integer. The total number of periods for which the forecast is required.
+#' @param train_end_date Date. The last date of the training data, used to generate the
+#'   date sequence for the forecast tibble.
+#' @param freq_str Character string. The frequency of the time series ('day', 'week'),
+#'   used for generating the date sequence.
 #'
-#' @return A list containing `$forecast` (tibble) and `$fitted` (vector). Returns NULL on error.
+#' @return A list containing two elements:
+#'   \itemize{
+#'     \item `forecast`: A tibble with columns 'ds' (Date), 'yhat' (point forecast),
+#'           'yhat_lower_80', 'yhat_upper_80', 'yhat_lower_95', 'yhat_upper_95' (confidence intervals).
+#'     \item `fitted`: A numeric vector of fitted values from the model.
+#'   }
+#'   Returns `NULL` if `model` is invalid or an error occurs during processing.
+#'
 #' @noRd
 #' @import forecast dplyr tibble lubridate stats
 forecast_tbats <- function(model, total_periods_needed, train_end_date, freq_str = "day") {
@@ -1295,22 +1378,32 @@ forecast_tbats <- function(model, total_periods_needed, train_end_date, freq_str
 
 #' Train Prophet Model
 #'
-#' Trains a Prophet model.
+#' Trains a Prophet model using `prophet::prophet` and `prophet::fit.prophet`.
+#' The model can incorporate custom seasonalities, holidays, and external regressors.
 #'
-#' @param holidays_df Optional dataframe for holidays (cols: holiday, ds, [lower_window, upper_window]).
-#' @param regressors_df Optional dataframe for regressors (cols: ds, regressor1, ...).
-#' @param regressor_names Character vector of regressor column names to use from regressors_df.
-#' @param train_df Tibble with 'ds' (Date) and 'y' (numeric) columns. If growth='logistic',
-#'   it must also contain a 'cap' column.
-#' @param config List containing Prophet parameters: yearly, weekly, daily seasonality (logical),
-#'   growth ('linear'/'logistic'), changepoint_scale.
+#' @param train_df A tibble with 'ds' (Date) and 'y' (numeric) columns.
+#'   If `config$growth` is 'logistic', `train_df` must also contain a 'cap' column
+#'   representing the carrying capacity.
+#' @param config A list containing Prophet parameters:
+#'   \itemize{
+#'     \item `yearly.seasonality`: Logical or character ('auto', TRUE, FALSE).
+#'     \item `weekly.seasonality`: Logical or character ('auto', TRUE, FALSE).
+#'     \item `daily.seasonality`: Logical or character ('auto', TRUE, FALSE).
+#'     \item `growth`: Character. 'linear' or 'logistic'.
+#'     \item `changepoint.prior.scale`: Numeric. Parameter modulating the flexibility of the automatic changepoint selection.
+#'   }
+#' @param holidays_df Optional. A tibble for specifying holidays, with columns 'holiday' (character/factor, name of the holiday)
+#'   and 'ds' (Date). Can optionally include 'lower_window' and 'upper_window' to extend holiday effects.
+#' @param regressors_df Optional. A tibble for external regressors. Must include 'ds' (Date) and columns for each regressor
+#'   named in `regressor_names`. These regressor columns must be present for all training dates.
+#' @param regressor_names Optional. A character vector of column names from `regressors_df` to be used as external regressors.
+#'   Required if `regressors_df` is provided.
 #'
-#' @return A fitted Prophet model object. Returns NULL on error.
+#' @return A fitted Prophet model object (class `prophet`). Returns `NULL` on error.
 #'
 #' @noRd
 #'
-#' @import prophet
-#' @import dplyr
+#' @import prophet dplyr
 train_prophet <- function(train_df, config, holidays_df = NULL, regressors_df = NULL, regressor_names = NULL) {
   # Basic validation
   if (!is.data.frame(train_df) || !all(c("ds", "y") %in% names(train_df))) {
@@ -1372,17 +1465,28 @@ train_prophet <- function(train_df, config, holidays_df = NULL, regressors_df = 
 
 #' Forecast using Prophet Model
 #'
-#' Generates forecasts from a trained Prophet model.
+#' Generates forecasts from a trained Prophet model using `prophet::make_future_dataframe`
+#' and `predict`.
 #'
-#' @param regressors_df Optional dataframe containing *future* values for regressors.
-#' @param regressor_names Character vector of regressor column names (must match training).
-#' @param model A fitted Prophet model object from `train_prophet`.
-#' @param periods_to_generate Integer, TOTAL number of periods to generate *after*
-#'   the end of the training data (should cover test set + future horizon).
-#' @param freq Character string for frequency ('day', 'week', 'month', etc.).
-#' @param capacity Numeric or NULL. The capacity value for logistic growth.
+#' @param model A fitted `prophet` model object from `train_prophet`.
+#' @param periods_to_generate Integer. The total number of future periods to generate,
+#'   starting from the day after the last date in the training data. This should cover
+#'   any test/validation set and the desired future forecast horizon.
+#' @param freq Character string. The frequency for generating future dates
+#'   (e.g., 'day', 'week', 'month'). Passed to `prophet::make_future_dataframe`.
+#' @param capacity Optional numeric. The carrying capacity value for logistic growth forecasts.
+#'   Required if the model was trained with `growth = 'logistic'`. This value should be
+#'   provided for all dates in `future_df` (historical and future).
+#' @param regressors_df Optional. A tibble containing *future* values for any external regressors
+#'   used during model training. Must include 'ds' (Date) and all regressor columns specified
+#'   in `regressor_names`. These values must cover the entire forecast horizon.
+#' @param regressor_names Optional. Character vector of regressor names. Must match those
+#'   used in training if `regressors_df` is provided.
 #'
-#' @return A tibble with columns 'ds', 'yhat', 'yhat_lower', 'yhat_upper'. Returns NULL on error.
+#' @return A tibble with columns: 'ds' (Date), 'yhat' (point forecast),
+#'   'yhat_lower' (lower bound of uncertainty interval), and 'yhat_upper' (upper bound).
+#'   Prophet's default uncertainty intervals are typically 80%.
+#'   Returns `NULL` on error.
 #'
 #' @noRd
 #'
@@ -1457,19 +1561,29 @@ forecast_prophet <- function(model, periods_to_generate, freq = "day", capacity 
 
 #' Train XGBoost Model
 #'
-#' Trains an XGBoost model using prepared data from a recipe.
+#' Trains an XGBoost model using a *prepared* `recipes::recipe` object.
+#' The function extracts the outcome (`y`) and predictors (`train_x_df`) from the
+#' prepared recipe, converts them to the `xgb.DMatrix` format, and then trains
+#' the model using `xgboost::xgb.train`.
 #'
-#' @param prep_recipe A *prepared* recipe object from `create_xgb_recipe`.
-#' @param config List containing XGBoost hyperparameters: nrounds, eta, max_depth,
-#'   subsample, colsample_bytree, gamma.
+#' @param prep_recipe A *prepared* `recipes::recipe` object. This recipe should have
+#'   been prepared (i.e., `recipes::prep()` called) on the training data. It defines
+#'   all feature engineering steps (e.g., lags, rolling windows, date components, dummy variables).
+#' @param config A list containing XGBoost hyperparameters:
+#'   \itemize{
+#'     \item `nrounds`: Integer. Number of boosting rounds.
+#'     \item `eta`: Numeric. Learning rate (shrinkage).
+#'     \item `max_depth`: Integer. Maximum depth of a tree.
+#'     \item `subsample`: Numeric. Subsample ratio of the training instances.
+#'     \item `colsample_bytree`: Numeric. Subsample ratio of columns when constructing each tree.
+#'     \item `gamma`: Numeric. Minimum loss reduction required to make a further partition on a leaf node.
+#'   }
 #'
-#' @return A fitted XGBoost model object (xgb.Booster). Returns NULL on error.
+#' @return A fitted XGBoost model object (class `xgb.Booster`). Returns `NULL` on error.
 #'
 #' @noRd
 #'
-#' @import xgboost
-#' @import recipes
-#' @import dplyr
+#' @import xgboost recipes dplyr
 train_xgboost <- function(prep_recipe, config) {
 
   if (is.null(prep_recipe) || !inherits(prep_recipe, "recipe")) {
@@ -1596,22 +1710,45 @@ train_xgboost <- function(prep_recipe, config) {
 
 
 #' Forecast using XGBoost Model
+#' @describeIn forecast_xgboost Generates forecasts from a trained XGBoost model.
+#' The function prepares future data by creating lag and window features based on the
+#' provided recipe, then predicts using the trained `xgb.Booster` model.
 #'
-#' Generates forecasts from a trained XGBoost model using a prepared recipe.
+#' @param model A fitted `xgb.Booster` object from `train_xgboost` or a similar process
+#'   (e.g., direct `xgboost::xgb.train` or from a `parsnip` fit object that has been finalized
+#'   and the underlying `xgb.Booster` extracted).
+#' @param prep_recipe The *prepared* `recipes::recipe` object that was used for training the model.
+#'   This recipe defines how features (like lags, rolling window statistics, date components) are created.
+#' @param full_df The original, complete dataframe (post initial cleaning and aggregation, but pre-train/test split)
+#'   containing 'ds' (Date) and 'y' (numeric value) columns. This dataframe is used as the historical basis
+#'   to generate features (especially lags and rolling window features) for the future points to be forecasted.
+#' @param train_end_date The last date of the training set. This is used as a reference point to start
+#'   generating the sequence of future dates for which forecasts are required.
+#' @param total_periods_needed Integer. The total number of periods to forecast ahead. This should typically
+#'   cover any test/validation set periods plus the actual future horizon desired.
+#' @param freq Character string indicating the frequency of the time series (e.g., "day", "week").
+#'   This is used for generating the sequence of future dates.
 #'
-#' @param model A fitted XGBoost model object (`xgb.Booster`).
-#' @param prep_recipe The *prepared* recipe used for training.
-#' @param full_df The original dataframe (post-cleaning/aggregation but pre-split)
-#'   containing 'ds' and 'y', used to generate lags/features for future points.
-#' @param horizon Integer, number of periods to forecast ahead.
-#' @param freq Character string frequency ('day', 'week', etc.) for date sequence generation.
+#' @return A tibble with 'ds' (Date) and 'yhat' (numeric forecast) columns.
+#'   Returns `NULL` on error (e.g., if feature generation fails or prediction errors occur).
+#'   Standard XGBoost models do not inherently produce prediction intervals; thus, the output
+#'   does not include confidence interval columns (e.g., `yhat_lower_95`, `yhat_upper_95`).
 #'
-#' @return A tibble with 'ds' and 'yhat' columns. Returns NULL on error. Confidence
-#'   intervals are not naturally produced by standard XGBoost.
+#' @details
+#' The forecasting process involves several steps:
+#' \enumerate{
+#'   \item Determination of `max_lag_needed` from the `prep_recipe` to ensure sufficient historical data is used.
+#'   \item Creation of a `future_dates` sequence starting from `train_end_date + 1 period`.
+#'   \item Construction of a `combined_df` by appending a `future_template` (with `NA` for `y`) to `recent_data` (tail of `full_df`).
+#'   \item Baking the `prep_recipe` with `combined_df` to generate features for both historical and future points.
+#'   \item Extraction of `future_features_baked` rows corresponding to the `future_dates`.
+#'   \item Alignment of these baked features with the feature names expected by the `model` (from `model$feature_names`).
+#'   \item Prediction using `predict(model, future_matrix)`.
+#' }
 #'
 #' @noRd
 #'
-#' @import xgboost recipes dplyr tibble
+#' @import xgboost recipes dplyr tibble lubridate utils
 forecast_xgboost <- function(model, prep_recipe, full_df, train_end_date, total_periods_needed, freq = "day") {
 
   if (is.null(model) || !inherits(model, "xgb.Booster")) {
@@ -1801,9 +1938,22 @@ forecast_xgboost <- function(model, prep_recipe, full_df, train_end_date, total_
   return(fcst_df)
 }
 
-#' Prepare data and features for GAM model
-#' @param df Dataframe with ds, y
-#' @return Dataframe with added features: time_index, year, month, week, yday, wday
+#' Prepare Features for GAM Model
+#'
+#' Prepares a dataframe with additional time-based features for use in GAM models.
+#' These features include a time index and various date components.
+#'
+#' @param df A tibble or dataframe with at least a 'ds' (Date) column.
+#'   It's assumed 'ds' is already in Date format.
+#'
+#' @return A tibble with the original columns plus added features:
+#'   \itemize{
+#'     \item `time_index`: Integer. A simple numeric sequence representing the time order (1, 2, 3,...).
+#'     \item `yday`: Integer. Day of the year (1-366).
+#'     \item `wday`: Factor. Day of the week (e.g., "Mon", "Tue"), with levels ordered starting from Monday.
+#'   }
+#'   The function arranges the dataframe by 'ds' before creating `time_index`.
+#'
 #' @noRd
 #' @import dplyr lubridate
 prepare_gam_features <- function(df) {
@@ -1823,15 +1973,31 @@ prepare_gam_features <- function(df) {
 
 #' Train GAM Model
 #'
-#' Trains a GAM model using mgcv::gam.
+#' Trains a Generalized Additive Model (GAM) using `mgcv::gam`.
+#' The function prepares features like time index, day of year, and day of week,
+#' and can optionally include holiday effects as a factor.
 #'
-#' @param train_df Tibble with 'ds' (Date) and 'y' (numeric) columns.
-#' @param config List containing GAM parameters: smooth_trend (logical),
-#'   use_season_y (logical, for yearly), use_season_w (logical, for weekly).
+#' @param train_df A tibble with 'ds' (Date) and 'y' (numeric) columns for training.
+#' @param config A list containing GAM parameters:
+#'   \itemize{
+#'     \item `smooth_trend`: Logical. If `TRUE`, uses a smooth term `s(time_index)` for the trend.
+#'           If `FALSE`, uses a linear term `time_index`.
+#'     \item `use_season_y`: Logical. If `TRUE`, adds a cyclic cubic spline `s(yday, bs='cc', k=...)`
+#'           for yearly seasonality (day of year). `k` is capped at 10.
+#'     \item `use_season_w`: Logical. If `TRUE`, adds the `wday` (day of week factor) term for
+#'           weekly seasonality.
+#'   }
+#' @param holidays_df Optional. A tibble with 'ds' (Date) and 'holiday' (character/factor) columns.
+#'   If provided, a factor column named `is_holiday` is created and added to the model,
+#'   with levels including all unique holiday names and "NoHoliday".
 #'
-#' @return A fitted GAM model object (from mgcv package). Returns NULL on error.
+#' @return A fitted GAM model object (class `gam` from the `mgcv` package).
+#'   Returns `NULL` on error. The model object will have an attribute `holiday_levels`
+#'   if holidays were processed.
+#'
 #' @noRd
-#' @import mgcv dplyr
+#' @import mgcv dplyr lubridate
+#' @importFrom stats as.formula
 train_gam <- function(train_df, config, holidays_df = NULL) {
   # Basic validation
   if (!is.data.frame(train_df) || !all(c("ds", "y") %in% names(train_df)) || nrow(train_df) < 10) {
@@ -2001,15 +2167,32 @@ train_gam <- function(train_df, config, holidays_df = NULL) {
 
 #' Forecast using GAM Model
 #'
-#' Generates forecasts from a trained GAM model.
+#' Generates forecasts from a trained GAM model using `predict.gam`.
+#' It prepares future data with necessary features (time index, date components, holidays)
+#' consistent with the training setup.
 #'
-#' @param model A fitted GAM model object from `train_gam`.
-#' @param train_df The original training dataframe (used for context, e.g., last date, feature generation).
-#' @param total_periods_needed Integer, TOTAL number of periods to forecast ahead.
-#' @param freq_str Character string frequency ('day', 'week').
-#' @param config List containing GAM parameters used for training (needed if features depend on config).
+#' @param model A fitted `gam` model object from `train_gam`.
+#' @param train_df The original training dataframe (used for context, e.g., last date,
+#'   deriving factor levels for `wday`).
+#' @param total_periods_needed Integer. The total number of periods to forecast ahead.
+#' @param freq_str Character string. Frequency for date sequence generation ('day', 'week').
+#' @param config A list containing GAM parameters used during training (e.g., `smooth_trend`,
+#'   `use_season_y`, `use_season_w`). This is used to ensure consistency if feature
+#'   creation for prediction depends on these settings (though current `prepare_gam_features`
+#'   is mostly independent of `config` for future dates beyond `time_index`).
+#' @param holidays_df Optional. A tibble with 'ds' and 'holiday' columns for the forecast period.
+#'   Used to create the `is_holiday` factor for future dates, ensuring consistency with
+#'   levels stored in `attr(model, "holiday_levels")`.
 #'
-#' @return A list containing `$forecast` (tibble) and `$fitted` (vector). Returns NULL on error.
+#' @return A list containing two elements:
+#'   \itemize{
+#'     \item `forecast`: A tibble with columns 'ds' (Date), 'yhat' (point forecast),
+#'           'yhat_lower_95', 'yhat_upper_95' (approximate 95% confidence intervals for the mean response).
+#'           80% CIs are not currently generated by this function for GAM.
+#'     \item `fitted`: A numeric vector of fitted values (predictions on training data).
+#'   }
+#'   Returns `NULL` if `model` is invalid or an error occurs.
+#'
 #' @noRd
 #' @import mgcv dplyr tibble lubridate stats
 forecast_gam <- function(model, train_df, total_periods_needed, freq_str = "day", config, holidays_df = NULL) {
@@ -2180,17 +2363,34 @@ forecast_gam <- function(model, train_df, total_periods_needed, freq_str = "day"
 
 #' Train NNETAR Model
 #'
-#' Trains a Neural Network Autoregressive model using forecast::nnetar.
+#' Trains a Neural Network Autoregressive (NNETAR) model using `forecast::nnetar`.
+#' The model structure (number of non-seasonal lags `p`, seasonal lags `P`, and
+#' hidden neurons `size`) can be automatically determined or manually specified.
 #'
-#' @param train_df Tibble with 'ds' (Date) and 'y' (numeric) columns.
-#' @param config List containing NNETAR parameters: nnetar_p, nnetar_P, 
-#'   nnetar_size_method, nnetar_size_manual, nnetar_repeats, 
-#'   nnetar_lambda_auto, nnetar_lambda_manual.
-#' @param aggregation_level Character string indicating data frequency ('Daily', 'Weekly').
+#' @param train_df A tibble with 'ds' (Date) and 'y' (numeric) columns for training.
+#' @param config A list containing NNETAR parameters:
+#'   \itemize{
+#'     \item `nnetar_p`: Integer. Number of non-seasonal lags. If 0 and `nnetar_P` is 0,
+#'           `nnetar` chooses `p`.
+#'     \item `nnetar_P`: Integer. Number of seasonal lags. If 0 and `nnetar_p` is 0,
+#'           `nnetar` chooses `P` (if data frequency > 1).
+#'     \item `nnetar_size_method`: Character. 'auto' or 'manual'.
+#'           If 'auto', size is calculated based on `p`, `P`, and data frequency.
+#'           If `p` and `P` are 0, `nnetar` chooses size.
+#'     \item `nnetar_size_manual`: Integer. Number of neurons in the hidden layer if `size_method` is 'manual'.
+#'     \item `nnetar_repeats`: Integer. Number of networks to train, the best is kept.
+#'     \item `nnetar_lambda_auto`: Logical. If `TRUE`, automatically select Box-Cox lambda.
+#'     \item `nnetar_lambda_manual`: Numeric (0-1). Manual Box-Cox lambda if `lambda_auto` is `FALSE`.
+#'   }
+#' @param aggregation_level Character string. Data frequency ("Daily", "Weekly").
+#'   Influences the `frequency` of the `ts` object (7 for "Daily", 52 for "Weekly").
 #'
-#' @return A fitted NNETAR model object. Returns NULL on error.
+#' @return A fitted NNETAR model object (class `nnetar`). Returns `NULL` on error.
+#'   The model object will have attributes `aggregation_level` and `frequency_used`.
+#'
 #' @noRd
 #' @import forecast dplyr lubridate stats
+#' @importFrom rlang `%||%`
 train_nnetar <- function(train_df, config, aggregation_level) {
   message("Starting train_nnetar")
   # Basic validation
@@ -2351,14 +2551,25 @@ train_nnetar <- function(train_df, config, aggregation_level) {
 
 #' Forecast using NNETAR Model
 #'
-#' Generates forecasts from a trained NNETAR model.
+#' Generates forecasts from a trained NNETAR model using `forecast::forecast`.
 #'
-#' @param model A fitted NNETAR model object.
-#' @param total_periods_needed Integer, number of periods to forecast ahead.
-#' @param train_end_date The last date in the training data (for date sequence generation).
-#' @param freq_str Character string frequency ('day', 'week').
+#' @param model A fitted `nnetar` model object from `train_nnetar`.
+#' @param total_periods_needed Integer. The total number of periods for which the forecast is required.
+#' @param train_end_date Date. The last date of the training data, used to generate the
+#'   date sequence for the forecast tibble.
+#' @param freq_str Character string. The frequency of the time series ('day', 'week'),
+#'   used for generating the date sequence.
 #'
-#' @return A list with '$forecast' (tibble) and '$fitted' (vector). Returns NULL on error.
+#' @return A list containing two elements:
+#'   \itemize{
+#'     \item `forecast`: A tibble with columns 'ds' (Date), 'yhat' (point forecast),
+#'           and potentially 'yhat_lower_80', 'yhat_upper_80', 'yhat_lower_95', 'yhat_upper_95'
+#'           (prediction intervals, if `PI=TRUE` was used in `forecast()` and model supports it).
+#'           Intervals might be NA if not produced by the model.
+#'     \item `fitted`: A numeric vector of fitted values from the model.
+#'   }
+#'   Returns `NULL` if `model` is invalid or an error occurs.
+#'
 #' @noRd
 #' @import forecast dplyr tibble lubridate stats
 forecast_nnetar <- function(model, total_periods_needed, train_end_date, freq_str = "day") {
@@ -2444,14 +2655,24 @@ forecast_nnetar <- function(model, total_periods_needed, train_end_date, freq_st
 }
 #' Train Random Forest Model
 #'
-#' Trains a Random Forest model using the ranger package.
+#' Trains a Random Forest model using the `ranger` package with a *prepared* `recipes::recipe`.
 #'
-#' @param prep_recipe A *prepared* recipe object from `create_tree_recipe`.
-#' @param config List containing RF hyperparameters: num_trees, mtry (0 for auto), min_node_size.
+#' @param prep_recipe A *prepared* `recipes::recipe` object. This recipe defines all
+#'   feature engineering steps (lags, rolling windows, date components, etc.) and should
+#'   have been prepared on the training data.
+#' @param config A list containing Random Forest hyperparameters:
+#'   \itemize{
+#'     \item `rf_num_trees`: Integer. Number of trees to grow.
+#'     \item `rf_mtry`: Integer. Number of variables randomly sampled as candidates at each split.
+#'           If 0 or invalid, it's automatically set to `floor(sqrt(number_of_predictors))`.
+#'     \item `rf_min_node_size`: Integer. Minimum size of terminal nodes.
+#'   }
 #'
-#' @return A fitted ranger model object. Returns NULL on error.
+#' @return A fitted `ranger` model object. Returns `NULL` on error.
+#'
 #' @noRd
 #' @import ranger recipes dplyr tibble
+#' @importFrom rlang `%||%`
 train_rf <- function(prep_recipe, config) {
   message("Starting train_rf")
   # --- Input Validation ---
@@ -2518,18 +2739,30 @@ train_rf <- function(prep_recipe, config) {
 
 #' Forecast using Random Forest Model
 #'
-#' Generates forecasts from a trained ranger model using a prepared recipe.
+#' Generates forecasts from a trained `ranger` model using a *prepared* `recipes::recipe`.
+#' Similar to `forecast_xgboost`, this function creates future features based on the recipe
+#' and then predicts.
 #'
-#' @param model A fitted ranger model object.
-#' @param prep_recipe The *prepared* recipe used for training.
-#' @param full_df The original dataframe (post-cleaning/agg) for feature generation history.
-#' @param train_end_date The last date present in the training data.
-#' @param total_periods_needed Integer, TOTAL number of periods to forecast ahead.
-#' @param freq_str Character string frequency ('day', 'week').
+#' @param model A fitted `ranger` model object from `train_rf`.
+#' @param prep_recipe The *prepared* `recipes::recipe` object used for training.
+#' @param full_df The original complete dataframe (post-cleaning/aggregation, pre-split)
+#'   with 'ds' and 'y', used as historical context for feature generation.
+#' @param train_df The original training dataframe (with 'ds' and 'y'), used for calculating
+#'   fitted values by baking the recipe on it and predicting.
+#' @param train_end_date Date. The last date of the training set.
+#' @param total_periods_needed Integer. Total number of future periods to forecast.
+#' @param freq_str Character string. Frequency for date sequence generation ('day', 'week').
 #'
-#' @return A list containing `$forecast` (tibble) and `$fitted` (vector). Returns NULL on error.
+#' @return A list containing two elements:
+#'   \itemize{
+#'     \item `forecast`: A tibble with 'ds' (Date) and 'yhat' (numeric forecast) columns.
+#'           Random Forest models from `ranger` do not directly provide prediction intervals.
+#'     \item `fitted`: A numeric vector of fitted values (predictions on the training data).
+#'   }
+#'   Returns `NULL` if an error occurs.
+#'
 #' @noRd
-#' @import ranger recipes dplyr tibble lubridate stats
+#' @import ranger recipes dplyr tibble lubridate stats utils
 forecast_rf <- function(model, prep_recipe, full_df, train_df,
                         train_end_date, total_periods_needed, freq_str = "day") {
   message("Starting forecast_rf")
@@ -2669,3 +2902,5 @@ forecast_rf <- function(model, prep_recipe, full_df, train_df,
 
   return(list(forecast = fcst_df, fitted = fitted_vals))
 }
+
+[end of R/mod_utils_train_forecast.R]

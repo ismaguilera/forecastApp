@@ -43,8 +43,8 @@ mod_results_plot_server <- function(id, reactive_train_df, reactive_test_df, rea
   moduleServer( id, function(input, output, session){
     ns <- session$ns
 
-    output$forecastPlot <- plotly::renderPlotly({
-
+    # Reactive expression to store the plot object
+    reactive_plot_object <- reactive({
       # Require the essential data components
       # req(reactive_train_df())
       # req(reactive_test_df())

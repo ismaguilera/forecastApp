@@ -127,12 +127,31 @@ app_ui <- function(request) {
           bslib::card(
             bslib::card_body(
               # Add padding or alignment if needed
-              div(style = "display: flex; justify-content: flex-end;", # Align button right
+              div(style = "display: flex; justify-content: flex-end; align-items: center;", # Align button right & vertically center
                   downloadButton(
                     outputId = "downloadForecastData",
                     label = "Download Forecasts (CSV)",
                     icon = shiny::icon("download"),
                     class = "btn-success" # Optional styling
+                  ),
+                  # Spacing
+                  tags$span(style="margin-left: 20px;"),
+                  # Report Format Radio Buttons
+                  radioButtons(
+                    inputId = "reportFormat", # Use inputId for direct use in app_ui
+                    label = NULL, # Keep it compact
+                    choices = list("HTML" = "html", "PDF" = "pdf"),
+                    selected = "html",
+                    inline = TRUE
+                  ),
+                  # Spacing
+                  tags$span(style="margin-left: 10px;"),
+                  # New Download Report Button
+                  downloadButton(
+                    outputId = "downloadReport",
+                    label = "Download Report",
+                    icon = shiny::icon("file-alt"),
+                    class = "btn-info"
                   )
               )
             )

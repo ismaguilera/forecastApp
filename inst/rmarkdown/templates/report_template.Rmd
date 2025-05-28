@@ -1,0 +1,55 @@
+---
+title: "Forecast Report"
+output: html_document
+params:
+  report_title: "Forecast Report"
+  forecast_plot: NULL
+  metrics_table: NULL
+  model_summaries: NULL
+  run_date: NULL
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(plotly)
+library(knitr)
+```
+
+# `r params$report_title`
+
+*Report generated on: `r format(params$run_date, "%Y-%m-%d %H:%M:%S")`*
+
+## Forecast Plot
+
+```{r forecast_plot_chunk}
+if (!is.null(params$forecast_plot)) {
+  print(params$forecast_plot)
+} else {
+  cat("Forecast plot not available.")
+}
+```
+
+## Key Performance Metrics
+
+```{r metrics_table_chunk}
+if (!is.null(params$metrics_table)) {
+  knitr::kable(params$metrics_table, caption = "Model Performance Metrics")
+} else {
+  cat("Performance metrics not available.")
+}
+```
+
+## Model Summaries
+
+```{r model_summaries_chunk}
+if (!is.null(params$model_summaries) && length(params$model_summaries) > 0) {
+  for (summary_item in params$model_summaries) {
+    cat("### ", summary_item$model_name, "\n") # Model name as sub-heading
+    cat(summary_item$summary_text, "\n\n")    # Actual summary text
+  }
+} else {
+  cat("Model summaries not available.")
+}
+```
+---
+*End of Report*
