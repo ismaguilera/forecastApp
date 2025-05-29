@@ -132,8 +132,8 @@ mod_validation_server <- function(id, reactive_run_models_summary, reactive_trai
                                detail = paste("Model:", model_name_cv, "- Slice", i, "of", nrow(ts_cv_splits)))
 
             slice <- ts_cv_splits[i, ]
-            train_slice <- timetk::training(slice)
-            assess_slice <- timetk::assessment(slice)
+            train_slice <- rsample::training(slice)
+            assess_slice <- rsample::assessment(slice)
 
             train_slice <- train_slice %>% dplyr::mutate(ds = as.Date(ds), y = as.numeric(y))
             assess_slice <- assess_slice %>% dplyr::mutate(ds = as.Date(ds), y = as.numeric(y))

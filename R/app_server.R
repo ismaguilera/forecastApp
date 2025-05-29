@@ -3,6 +3,7 @@
 #' The application server-side
 #' @param input,output,session Internal parameters for {shiny}. DO NOT REMOVE.
 #' @import shiny dplyr tibble forecast parsnip workflows tune dials rsample yardstick timetk recipes slider
+#' @import shiny.i18n
 #' @importFrom shinyjs reset
 #' @importFrom RColorBrewer brewer.pal
 #' @importFrom stats predict 
@@ -12,28 +13,74 @@
 # Needed for forecast() call inside observeEvent
 # Add other necessary imports if functions are called directly here
 #' @noRd
+
+# --- Internationalization Setup ---
+i18n <- Translator$new(translation_json_path = app_sys("i18n",'translation.json'))
+i18n$set_translation_language('en')
+
 app_server <- function(input, output, session) {
-
-  # --- Internationalization Setup ---
-  i18n <- shiny.i18n::Translator$new(translation_json_path = app_sys('i18n'))
-  i18n$set_translation_language('en')
-
   # --- Language Selector Observer ---
-  observeEvent(input$selected_language, {
-    shiny::req(input$selected_language)
-    # Update the translator's language
-    i18n$set_translation_language(input$selected_language)
-    # The renderText functions below will react to this change.
-  })
+  # observeEvent(input$selected_language, {
+  #   req(input$selected_language)
+  #   # req(input$selected_language)
+  #   # Update the translator's language
+  #   update_lang(shiny::session, input$selected_language)
+  #   # The renderText functions below will react to this change.
+  #   # i18n$set_translation_language(input$selected_language)
+  #   # session$reload() # Recarga la sesión para aplicar cambios, a veces necesario
+  # })
+  
 
   # --- Reactive UI Translations ---
-  output$ui_page_title <- renderText({ i18n$t("Vaccine Forecasting App") })
-  output$ui_nav_data <- renderText({ paste(shiny::icon("table"), i18n$t("Data")) })
-  output$ui_nav_model <- renderText({ paste(shiny::icon("gears"), i18n$t("Model")) })
-  output$ui_nav_forecast_results <- renderText({ paste(shiny::icon("chart-line"), i18n$t("Forecast results")) })
-  output$ui_nav_validation <- renderText({ paste(shiny::icon("circle-check"), i18n$t("Validation")) })
-  output$ui_nav_about <- renderText({ paste(shiny::icon("circle-info"), i18n$t("About")) })
+  # output$ui_page_title <- renderUI({ i18n$t("Vaccine Forecasting App") })
+  # output$ui_nav_data <- renderText({ i18n$t("Data")})
+  # output$ui_nav_model <- renderText({ i18n$t("Model") })
+  # output$ui_nav_forecast_results <- renderText({ i18n$t("Forecast results") })
+  # output$ui_nav_validation <- renderText({ i18n$t("Validation") })
+  # output$ui_nav_about <- renderText({  i18n$t("About") })
+  observeEvent(input$selected_language, {
+    req(input$selected_language)
+    # Update the translator's language
+    i18n$set_translation_language(input$selected_language)
+    # Update the UI elements with the new translations
+    output$ui_page_title <- renderUI({ i18n$t("Vaccine Forecasting App") })
+    output$ui_nav_data <- renderText({ i18n$t("Data")})
+    output$ui_sidebar_data<- renderText({ i18n$t("Data Input") })
+    output$ui_accordion_preprocess <- renderText({ i18n$t("Preprocessing & Split") })
+    output$ui_aggregation_level <- renderText({ i18n$t("Aggregation Level") })
+    output$ui_aggregation_level_daily <- renderText({ i18n$t("Daily") })
+    output$ui_aggregation_level_weekly <- renderText({ i18n$t("Weekly") })
+    output$ui_aggregation_level_weekly_mean <- renderText({ i18n$t("mean") })
+    output$ui_aggregation_level_weekly_sum <- renderText({ i18n$t("sum") })
+    output$ui_train_set_percentage <- renderText({ i18n$t("Train Set Percentage") })  
+    output$ui_time_series_decomposition <- renderText({ i18n$t("Time Series Decomposition") })  
+    output$ui_model_summary <- renderText({ i18n$t("Model Summary") })
+    output$ui_csv_file_upload <- renderText({ i18n$t("Choose CSV or Excel File") })
+    output$ui_choose_default_dataset <- renderText({ i18n$t("Choose Default Dataset") })
+    ui_load_default_dataset <- renderText({ i18n$t("Load Selected Default Dataset") })
+    output$ui_select_columns <- renderText({ i18n$t("Select Columns") })
+    output$ui_preview <- renderText({ i18n$t("Preview") })
+    output$ui_select_date_col <- renderText({ i18n$t("Select Date Column") })
+    output$ui_select_value_col <- renderText({ i18n$t("Select Value Column") })
+    output$ui_load_holidays <- renderText({ i18n$t("Load Holidays (Optional)") })
+    output$ui_load_holidays_default <- renderText({ i18n$t("Load Default Holidays") })
+    output$ui_upload_global_holidays <- renderText({ i18n$t("Upload Global Holidays File (CSV: ds, holiday)") })
+    output$ui_nav_model <- renderText({ i18n$t("Model") })
+    output$ui_nav_forecast_results <- renderText({ i18n$t("Forecast results") })
+    output$ui_visualizations <- renderText({ i18n$t("Visualizations") })
+    output$ui_nav_validation <- renderText({ i18n$t("Validation") })
+    output$ui_nav_about <- renderText({  i18n$t("About") })
+    
+  })
+
   # Note: The "Language:" label for selectInput is not translated for now as per plan.
+  # Update the language selector choices dynamically
+  # observe({
+  #   updateSelectInput(session, "selected_language",
+  #                     choices = i18n$get_languages(),
+  #                     selected = i18n$get_key_translation()
+  #                     )
+  # })
 
   # --- Reactive Values Store ---
   r <- reactiveValues(
@@ -1913,7 +1960,11 @@ app_server <- function(input, output, session) {
             error_msg_render <- paste(error_msg_render, 
                                       "This often means essential LaTeX packages are missing. ",
                                       "If using TinyTeX, try running tinytex::tlmgr_install(c('fancyhdr', 'titling', 'framed')) or check the .log file mentioned in the error for more details. ",
-                                      "The log file path is often in the error message: ", gsub(".*\\file([[:alnum:]]+)\.tex.*", "\\\\file\\1.log", conditionMessage(e_render)))
+                                      "The log file path is often in the error message: ",
+                                      gsub(".*\\file([[:alnum:]]+)\\.tex.*",
+                                           "\\\\file\\1.log",
+                                           conditionMessage(e_render))
+                                    )
           }
           shiny::showNotification(error_msg_render, type = "error", duration = 20)
           # Ensure 'file' (the downloadHandler's output file) is not left empty or non-existent if possible,
