@@ -2903,4 +2903,4 @@ forecast_rf <- function(model, prep_recipe, full_df, train_df,
   return(list(forecast = fcst_df, fitted = fitted_vals))
 }
 
-[end of R/mod_utils_train_forecast.R]
+
