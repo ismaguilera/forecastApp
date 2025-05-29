@@ -429,5 +429,12 @@ mod_results_plot_server <- function(id, reactive_train_df, reactive_test_df, rea
       # p # Return the plot object
     })
 
+    # Render the plot to the UI output
+    output$forecastPlot <- plotly::renderPlotly({
+      reactive_plot_object()
+    })
+
+    # Return the reactive plot object for potential use elsewhere (e.g., download)
+    return(reactive_plot_object)
   })
 }

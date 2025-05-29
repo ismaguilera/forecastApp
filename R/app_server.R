@@ -14,6 +14,27 @@
 #' @noRd
 app_server <- function(input, output, session) {
 
+  # --- Internationalization Setup ---
+  i18n <- shiny.i18n::Translator$new(translation_json_path = app_sys('i18n'))
+  i18n$set_translation_language('en')
+
+  # --- Language Selector Observer ---
+  observeEvent(input$selected_language, {
+    shiny::req(input$selected_language)
+    # Update the translator's language
+    i18n$set_translation_language(input$selected_language)
+    # The renderText functions below will react to this change.
+  })
+
+  # --- Reactive UI Translations ---
+  output$ui_page_title <- renderText({ i18n$t("Vaccine Forecasting App") })
+  output$ui_nav_data <- renderText({ paste(shiny::icon("table"), i18n$t("Data")) })
+  output$ui_nav_model <- renderText({ paste(shiny::icon("gears"), i18n$t("Model")) })
+  output$ui_nav_forecast_results <- renderText({ paste(shiny::icon("chart-line"), i18n$t("Forecast results")) })
+  output$ui_nav_validation <- renderText({ paste(shiny::icon("circle-check"), i18n$t("Validation")) })
+  output$ui_nav_about <- renderText({ paste(shiny::icon("circle-info"), i18n$t("About")) })
+  # Note: The "Language:" label for selectInput is not translated for now as per plan.
+
   # --- Reactive Values Store ---
   r <- reactiveValues(
     run_id = 0, # Trigger for plot update
@@ -1136,6 +1157,13 @@ app_server <- function(input, output, session) {
               print(e)
               print("--- End Error Object (Individual Model) ---")
 
+              if (model_name == "GAM") {
+                message("--- DETAILED GAM ERROR in app_server ---")
+                print(e) # Print the full error object 'e'
+                message(paste("GAM error conditionMessage:", conditionMessage(e)))
+                message(paste("GAM error conditionCall:", conditionCall(e)))
+                message("--- END DETAILED GAM ERROR ---")
+              }
 
           }) # End inner tryCatch
 
@@ -1853,6 +1881,11 @@ app_server <- function(input, output, session) {
         shiny::incProgress(0.6, detail = "Rendering report...")
         # Render the R Markdown document
         tryCatch({
+          if (input$reportFormat == "pdf") {
+            if (!tinytex::is_tinytex()) {
+              shiny::showNotification("TinyTeX is not installed. PDF reports require a LaTeX distribution. Consider installing TinyTeX with tinytex::install_tinytex().", type = "warning", duration = 15)
+            }
+          }
           rmarkdown::render(
             input = temp_report_path,
             output_format = if (input$reportFormat == "pdf") "pdf_document" else "html_document",
@@ -1863,19 +1896,36 @@ app_server <- function(input, output, session) {
           
           shiny::incProgress(0.9, detail = "Finalizing...")
           # Copy the rendered file to the 'file' argument of downloadHandler
+          if (!file.exists(temp_output_path)) {
+            stop(paste("Rendered report file not found at temporary path:", temp_output_path, "Cannot proceed with download."))
+          }
           file.copy(temp_output_path, file, overwrite = TRUE)
           shiny::showNotification("Report generated successfully!", type = "message", duration = 5)
           
-        }, error = function(e) {
-          error_msg <- paste("Error generating report:", e$message)
+        }, error = function(e_render) {
+          error_msg_render <- paste("Error during rmarkdown::render:", conditionMessage(e_render))
           # Log full error to console for debugging
-          print(error_msg) 
-          print(e)
-          shiny::showNotification(error_msg, type = "error", duration = 15)
-          # Create an empty file to prevent Shiny download error
-          # file.create(file) 
-          # Return NULL or an empty file might be better handled by Shiny's downloadHandler
-          # For now, let Shiny handle the error if file isn't copied.
+          print(error_msg_render)
+          print(e_render) # Print the full error object
+
+          # Check if the error is specifically a LaTeX error for PDF
+          if (input$reportFormat == "pdf" && grepl("LaTeX failed to compile", conditionMessage(e_render), ignore.case = TRUE)) {
+            error_msg_render <- paste(error_msg_render, 
+                                      "This often means essential LaTeX packages are missing. ",
+                                      "If using TinyTeX, try running tinytex::tlmgr_install(c('fancyhdr', 'titling', 'framed')) or check the .log file mentioned in the error for more details. ",
+                                      "The log file path is often in the error message: ", gsub(".*\\file([[:alnum:]]+)\.tex.*", "\\\\file\\1.log", conditionMessage(e_render)))
+          }
+          shiny::showNotification(error_msg_render, type = "error", duration = 20)
+          # Ensure 'file' (the downloadHandler's output file) is not left empty or non-existent if possible,
+          # though Shiny usually handles this by not providing a download if 'file' isn't valid.
+          # Creating an empty text file as a fallback to prevent 404s if render fails.
+          # This provides *something* to download, even if it's just an error message.
+          tryCatch({
+            writeLines(c("Report generation failed.", error_msg_render), file)
+          }, error = function(e_write) {
+            # If even writing a simple text file fails, log it.
+            message(paste("Failed to write fallback error file for report generation:", conditionMessage(e_write)))
+          })
         }, finally = {
             # Clean up temporary files
             if (file.exists(temp_report_path)) unlink(temp_report_path)
