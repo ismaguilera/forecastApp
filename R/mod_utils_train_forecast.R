@@ -2005,6 +2005,13 @@ train_gam <- function(train_df, config, holidays_df = NULL) {
     return(NULL)
   }
 
+  # --- Initial Debug Prints ---
+  message("--- train_gam: Initial Inputs ---")
+  message("GAM Config:")
+  print(config)
+  message(paste("GAM train_df dimensions:", paste(dim(train_df), collapse="x")))
+  message("--- End train_gam: Initial Inputs ---")
+
   model <- NULL
   tryCatch({
     message("Preparing features for GAM...")
@@ -2138,12 +2145,25 @@ train_gam <- function(train_df, config, holidays_df = NULL) {
     # Add regressors/holidays here if implemented later
     # formula_str <- paste(formula_str, "+ regressor1 + s(regressor2)")
 
-    message(paste("Fitting GAM with formula:", formula_str))
+    message(paste("GAM: Final formula string:", formula_str)) # Added
     gam_formula <- stats::as.formula(formula_str)
     # --- End Build Formula ---
 
+    message(paste("GAM: Dimensions of feature_df before fitting:", paste(dim(feature_df), collapse="x"))) # Added
+
     # Fit the model
-    model <- mgcv::gam(gam_formula, data = feature_df, method = "REML") # REML often preferred
+    model <- tryCatch({
+        mgcv::gam(gam_formula, data = feature_df, method = "REML")
+      }, error = function(e_gam_fit) {
+        message("--- ERROR during mgcv::gam() call in train_gam ---")
+        message(paste("GAM formula was:", deparse(gam_formula))) # Print the formula
+        message("Summary of feature_df fed to gam():")
+        print(summary(feature_df)) # Print summary of data
+        message("Error message from mgcv::gam():")
+        print(e_gam_fit) # Print the specific error from gam()
+        message("--- END ERROR in mgcv::gam() ---")
+        NULL # Return NULL if gam() fails
+      })
 
     if (!is.null(model)) {
       attr(model, "holiday_levels") <- holiday_levels
@@ -2200,6 +2220,13 @@ forecast_gam <- function(model, train_df, total_periods_needed, freq_str = "day"
   if (is.null(model) || !inherits(model, "gam")) { return(NULL) }
   # ... other validation ...
 
+  # --- Initial Debug Prints ---
+  message("--- forecast_gam: Initial Inputs ---")
+  message(paste("GAM forecast_gam: train_df dimensions:", paste(dim(train_df), collapse="x")))
+  message(paste("GAM forecast_gam: total_periods_needed:", total_periods_needed))
+  message(paste("GAM forecast_gam: freq_str:", freq_str))
+  message("--- End forecast_gam: Initial Inputs ---")
+
   fcst_df <- NULL
   fitted_vals <- NULL
 
@@ -2224,6 +2251,7 @@ forecast_gam <- function(model, train_df, total_periods_needed, freq_str = "day"
     holiday_col_name_gam <- "is_holiday"
     retrieved_holiday_levels <- attr(model, "holiday_levels")
 
+    # --- Holiday Levels Check ---
     if (is.null(retrieved_holiday_levels)) {
       warning("GAM Forecast: 'holiday_levels' attribute not found in model. Attempting to derive from holidays_df.")
       # Fallback: derive levels from holidays_df (less robust if holidays_df changes)
@@ -2233,8 +2261,11 @@ forecast_gam <- function(model, train_df, total_periods_needed, freq_str = "day"
         all_holiday_names_fcst <- all_holiday_names_fcst[!is.na(all_holiday_names_fcst) & all_holiday_names_fcst != ""]
       }
       retrieved_holiday_levels <- unique(c("NoHoliday", all_holiday_names_fcst))
+      message("GAM Forecast: Derived holiday_levels for forecast:", paste(retrieved_holiday_levels, collapse=", "))
+    } else {
+      message(paste("GAM Forecast: Using holiday levels from model attribute:", paste(retrieved_holiday_levels, collapse=", ")))
     }
-    message(paste("GAM Forecast: Using holiday levels:", paste(retrieved_holiday_levels, collapse=", ")))
+    # --- End Holiday Levels Check ---
 
     if (!is.null(holidays_df) && nrow(holidays_df) > 0 &&
         all(c("ds", "holiday") %in% names(holidays_df))) {
@@ -2262,13 +2293,32 @@ forecast_gam <- function(model, train_df, total_periods_needed, freq_str = "day"
       message("GAM Forecast: No future holidays processed. '", holiday_col_name_gam, "' column initialized with 'NoHoliday'.")
     }
     # --- End Create Future Dataframe ---
-    message(paste("Created future dataframe for prediction. Dims:", paste(dim(future_df), collapse=" x ")))
+    message(paste("GAM Forecast: Dimensions of future_df for prediction:", paste(dim(future_df), collapse=" x "))) # Added
 
+    # --- GAM Predict Summary ---
+    message("GAM Forecast: Summary of future_df before prediction:") # Added
+    print(summary(future_df)) # Added
+    # --- End GAM Predict Summary ---
 
     # --- Predict with Confidence Intervals ---
     message("Predicting with GAM (se.fit=TRUE)...")
     # Use se.fit=TRUE to get standard errors for CI calculation
-    preds <- predict(model, newdata = future_df, type = "response", se.fit = TRUE)
+    preds <- tryCatch({
+        predict(model, newdata = future_df, type = "response", se.fit = TRUE)
+      }, error = function(e_gam_predict) {
+        message("--- ERROR during predict.gam() call in forecast_gam ---")
+        message("Dimensions of future_df fed to predict.gam(): ", paste(dim(future_df), collapse="x"))
+        message("Summary of future_df fed to predict.gam():")
+        print(summary(future_df))
+        message("Error message from predict.gam():")
+        print(e_gam_predict)
+        message("--- END ERROR in predict.gam() ---")
+        NULL # Return NULL if predict() fails
+      })
+
+    if(is.null(preds)){
+      stop("predict.gam() failed and returned NULL.") # Propagate error to outer tryCatch in app_server
+    }
 
     # --- DEBUG: Check Standard Errors and CIs ---
     message("Structure of prediction object:")

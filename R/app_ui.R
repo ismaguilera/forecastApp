@@ -16,7 +16,7 @@ app_ui <- function(request) {
 
     # Top-level container: page_navbar
     bslib::page_navbar(
-      title = "Vaccine Forecasting App", # Page title
+      title = textOutput("ui_page_title", inline = TRUE), # Page title
       theme = bslib::bs_theme(version = 5, bootswatch = "cerulean"),
       # theme = bslib::bs_theme(version = 5, bootswatch = "cosmo", bg = "#2c3e50", fg = "#ffffff"), # Apply theme (change "cerulean" if desired)
       # Collapsible navigation on smaller screens
@@ -26,7 +26,7 @@ app_ui <- function(request) {
 
       # --- Data Panel ---
       bslib::nav_panel(
-        title = tagList(shiny::icon("table"), "Data"),
+        title = textOutput("ui_nav_data", inline = TRUE),
         # Internal layout for this panel
         bslib::layout_sidebar(
           sidebar = bslib::sidebar(
@@ -88,7 +88,7 @@ app_ui <- function(request) {
 
       # --- Model Panel ---
       bslib::nav_panel(
-        title = tagList(shiny::icon("gears"), "Model"),
+        title = textOutput("ui_nav_model", inline = TRUE),
         # Internal layout for this panel
         # bslib::layout_sidebar(
         #   sidebar = bslib::sidebar(
@@ -113,7 +113,7 @@ app_ui <- function(request) {
 
       # --- Forecast Results Panel ---
       bslib::nav_panel(
-        title = tagList(shiny::icon("chart-line"), "Forecast results"),
+        title = textOutput("ui_nav_forecast_results", inline = TRUE),
         # Internal layout for this panel
         bslib::layout_sidebar(
           sidebar = bslib::sidebar(
@@ -200,12 +200,19 @@ app_ui <- function(request) {
 
       # --- Validation Panel ---
       bslib::nav_panel( # This is now handled by the module UI
-        title = tagList(shiny::icon("circle-check"), "Validation"),
+        title = textOutput("ui_nav_validation", inline = TRUE),
         mod_validation_ui("validation_1") 
       ),
        # Call the module UI here
 
       bslib::nav_spacer(), # Adds space before right-aligned items
+      bslib::nav_item(
+        shiny::selectInput("selected_language",
+                           label = "Language:", # Fixed label for now
+                           choices = c("English" = "en", "Español" = "es"),
+                           selected = "en",
+                           width = "120px") # Adjust width as needed
+      ),
       bslib::nav_item(
         actionButton("save_session_button", "Save Session", icon = icon("save"), class = "btn-primary btn-sm")
       ),
@@ -222,7 +229,7 @@ app_ui <- function(request) {
       #   tags$p(tags$strong("Packages:"), tags$code("bslib, shiny, golem, dplyr, lubridate, plotly, forecast, prophet, xgboost, recipes, yardstick, readxl, DT, rintrojs, tidyr, tibble, slider, timetk, etc."))
       # )
       bslib::nav_panel(
-        title = tagList(shiny::icon("circle-info"), " About"),
+        title = textOutput("ui_nav_about", inline = TRUE),
         # Internal layout for this panel
         bslib::layout_sidebar(
           sidebar = bslib::sidebar(

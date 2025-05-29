@@ -50,7 +50,8 @@ Imports:
     yardstick,
     rmarkdown,
     knitr,
-    tinytex
+    tinytex,
+    shiny.i18n (>= 0.2.0)
 Suggests:
     testthat (>= 3.0.0),
     pkgload,
