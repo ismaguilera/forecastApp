@@ -20,7 +20,7 @@
       {"en": "Time Series Decomposition", "es": "Descomposición de Series Temporales"},
       {"en": "Choose CSV or Excel File", "es": "Elegir Archivo CSV o Excel"},
       {"en": "Choose Default Dataset", "es": "Elegir Conjunto de Datos"},
-      {"en": "Load Selected Default Dataset", "es": "Cargar Conjunto de Datos Predeterminado"},
+      {"en": "Load Selected Default Dataset", "es": "Cargar Datos Predeterminados"},
       {"en": "Select Columns", "es": "Seleccionar Columnas"},
       {"en": "Preview", "es": "Vista Previa"},
       {"en": "Select Date Column", "es": "Seleccionar Columna de Fecha"},

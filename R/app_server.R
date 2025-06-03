@@ -57,7 +57,7 @@ app_server <- function(input, output, session) {
     output$ui_model_summary <- renderText({ i18n$t("Model Summary") })
     output$ui_csv_file_upload <- renderText({ i18n$t("Choose CSV or Excel File") })
     output$ui_choose_default_dataset <- renderText({ i18n$t("Choose Default Dataset") })
-    ui_load_default_dataset <- renderText({ i18n$t("Load Selected Default Dataset") })
+    output$ui_load_default_dataset <- renderText({ i18n$t("Load Selected Default Dataset") })
     output$ui_select_columns <- renderText({ i18n$t("Select Columns") })
     output$ui_preview <- renderText({ i18n$t("Preview") })
     output$ui_select_date_col <- renderText({ i18n$t("Select Date Column") })
