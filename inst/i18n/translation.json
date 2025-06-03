@@ -1,34 +1,1353 @@
 {
   "cultural_date_format": "%d-%m-%Y",
-  "languages": ["en", "es"],
+  "languages": [
+    "en",
+    "es"
+  ],
   "translation": [
-      {"en": "Vaccine Forecasting App", "es": "Aplicación de Pronóstico de Vacunas"},
-      {"en": "Data", "es": "Datos"},
-      {"en": "Model", "es": "Modelo"},
-      {"en": "Forecast results", "es": "Resultados"},
-      {"en": "Validation", "es": "Validación"},
-      {"en": "About", "es": "Acerca"},
-      {"en": "Data Input", "es": "Ingresar Datos"},
-      {"en": "Preprocessing & Split", "es": "Preprocesamiento y División"},
-      {"en": "Aggregation Level", "es": "Nivel de Agregación"},
-      {"en": "Daily", "es": "Diario"},
-      {"en": "Weekly", "es": "Semanal"},
-      {"en": "Weekly Aggregation Function", "es": "Función de Agregación Semanal"},
-      {"en": "sum", "es": "Suma"},
-      {"en": "mean", "es": "Media"},
-      {"en": "Train Set Percentage", "es": "Porcentaje del Conjunto de Entrenamiento"},
-      {"en": "Time Series Decomposition", "es": "Descomposición de Series Temporales"},
-      {"en": "Choose CSV or Excel File", "es": "Elegir Archivo CSV o Excel"},
-      {"en": "Choose Default Dataset", "es": "Elegir Conjunto de Datos"},
-      {"en": "Load Selected Default Dataset", "es": "Cargar Datos Predeterminados"},
-      {"en": "Select Columns", "es": "Seleccionar Columnas"},
-      {"en": "Preview", "es": "Vista Previa"},
-      {"en": "Select Date Column", "es": "Seleccionar Columna de Fecha"},
-      {"en": "Select Value Column", "es": "Seleccionar Columna de Valor"},
-      {"en": "Load Holidays (Optional)", "es": "Cargar Días Festivos (Opcional)"},
-      {"en": "Load Default Holidays", "es": "Cargar Días Festivos Predeterminados"},
-      {"en": "Upload Global Holidays File (CSV: ds, holiday)", "es": "Subir Archivo de Días Festivos Globales (CSV: fecha, descripción)"},
-      {"en": "Model Summary", "es": "Resumen del Modelo"},
-      {"en": "Visualizations", "es": "Visualizaciones"}
+    {
+      "en": "Vaccine Forecasting App",
+      "es": "Aplicación de Pronóstico de Vacunas"
+    },
+    {
+      "en": "Data",
+      "es": "Datos"
+    },
+    {
+      "en": "Model",
+      "es": "Modelo"
+    },
+    {
+      "en": "Forecast results",
+      "es": "Resultados"
+    },
+    {
+      "en": "Validation",
+      "es": "Validación"
+    },
+    {
+      "en": "About",
+      "es": "Acerca"
+    },
+    {
+      "en": "Data Input",
+      "es": "Ingresar Datos"
+    },
+    {
+      "en": "Preprocessing & Split",
+      "es": "Preprocesamiento y División"
+    },
+    {
+      "en": "Aggregation Level",
+      "es": "Nivel de Agregación"
+    },
+    {
+      "en": "Daily",
+      "es": "Diario"
+    },
+    {
+      "en": "Weekly",
+      "es": "Semanal"
+    },
+    {
+      "en": "Weekly Aggregation Function",
+      "es": "Función de Agregación Semanal"
+    },
+    {
+      "en": "sum",
+      "es": "Suma"
+    },
+    {
+      "en": "mean",
+      "es": "Media"
+    },
+    {
+      "en": "Train Set Percentage",
+      "es": "Porcentaje del Conjunto de Entrenamiento"
+    },
+    {
+      "en": "Time Series Decomposition",
+      "es": "Descomposición de Series Temporales"
+    },
+    {
+      "en": "Choose CSV or Excel File",
+      "es": "Elegir Archivo CSV o Excel"
+    },
+    {
+      "en": "Choose Default Dataset",
+      "es": "Elegir Conjunto de Datos"
+    },
+    {
+      "en": "Load Selected Default Dataset",
+      "es": "Cargar Datos Predeterminados"
+    },
+    {
+      "en": "Select Columns",
+      "es": "Seleccionar Columnas"
+    },
+    {
+      "en": "Preview",
+      "es": "Vista Previa"
+    },
+    {
+      "en": "Select Date Column",
+      "es": "Seleccionar Columna de Fecha"
+    },
+    {
+      "en": "Select Value Column",
+      "es": "Seleccionar Columna de Valor"
+    },
+    {
+      "en": "Load Holidays (Optional)",
+      "es": "Cargar Días Festivos (Opcional)"
+    },
+    {
+      "en": "Load Default Holidays",
+      "es": "Cargar Días Festivos Predeterminados"
+    },
+    {
+      "en": "Upload Global Holidays File (CSV: ds, holiday)",
+      "es": "Subir Archivo de Días Festivos Globales (CSV: fecha, descripción)"
+    },
+    {
+      "en": "Model Summary",
+      "es": "Resumen del Modelo"
+    },
+    {
+      "en": "Visualizations",
+      "es": "Visualizaciones"
+    },
+    {
+      "en": "Forecast App",
+      "es": "App de Pronóstico"
+    },
+    {
+      "en": "Model summary",
+      "es": "Resumen del modelo"
+    },
+    {
+      "en": "Download Forecasts (CSV)",
+      "es": "Descargar Pronósticos (CSV)"
+    },
+    {
+      "en": "HTML",
+      "es": "HTML"
+    },
+    {
+      "en": "PDF",
+      "es": "PDF"
+    },
+    {
+      "en": "Download Report",
+      "es": "Descargar Informe"
+    },
+    {
+      "en": "Plot",
+      "es": "Gráfico"
+    },
+    {
+      "en": "Forecast plot",
+      "es": "Gráfico de Pronóstico"
+    },
+    {
+      "en": "Performance",
+      "es": "Rendimiento"
+    },
+    {
+      "en": "Model performance metrics",
+      "es": "Métricas de rendimiento del modelo"
+    },
+    {
+      "en": "Extra Plots",
+      "es": "Gráficos Adicionales"
+    },
+    {
+      "en": "Additional plots",
+      "es": "Gráficos adicionales"
+    },
+    {
+      "en": "About the app",
+      "es": "Acerca de la aplicación"
+    },
+    {
+      "en": "This application allows forecasting of vaccine doses using multiple time series models.",
+      "es": "Esta aplicación permite pronosticar dosis de vacunas utilizando múltiples modelos de series temporales."
+    },
+    {
+      "en": "Vaccine Forecasting Application:",
+      "es": "Aplicación de Pronóstico de Vacunas:"
+    },
+    {
+      "en": "Features:",
+      "es": "Características:"
+    },
+    {
+      "en": "Loading data from CSV/Excel files,",
+      "es": "Carga de datos desde archivos CSV/Excel,"
+    },
+    {
+      "en": "Configuration of multiple models (ARIMA, Prophet, XGBoost),",
+      "es": "Configuración de múltiples modelos (ARIMA, Prophet, XGBoost),"
+    },
+    {
+      "en": "Switching between daily and weekly time series,",
+      "es": "Cambio entre series temporales diarias y semanales,"
+    },
+    {
+      "en": "Interactive visualization of results,",
+      "es": "Visualización interactiva de resultados,"
+    },
+    {
+      "en": "Validation of forecasts with real data.",
+      "es": "Validación de pronósticos con datos reales."
+    },
+    {
+      "en": "Developed with:",
+      "es": "Desarrollado con:"
+    },
+    {
+      "en": "R and Shiny.",
+      "es": "R y Shiny."
+    },
+    {
+      "en": "Packages:",
+      "es": "Paquetes:"
+    },
+    {
+      "en": "Copyright 2025 DESAL, MINSAL",
+      "es": "Copyright 2025 DESAL, MINSAL"
+    },
+    {
+      "en": "Save Session",
+      "es": "Guardar Sesión"
+    },
+    {
+      "en": "Load Session",
+      "es": "Cargar Sesión"
+    },
+    {
+      "en": "Copyright 2025 DESAL, MINSAL. Versión 1.0",
+      "es": "Copyright 2025 DESAL, MINSAL. Versión 1.0"
+    },
+    {
+      "en": "Model Configuration",
+      "es": "Configuración del Modelo"
+    },
+    {
+      "en": "Select Models to Run:",
+      "es": "Seleccionar Modelos a Ejecutar:"
+    },
+    {
+      "en": "ARIMA",
+      "es": "ARIMA"
+    },
+    {
+      "en": "ETS",
+      "es": "ETS"
+    },
+    {
+      "en": "TBATS",
+      "es": "TBATS"
+    },
+    {
+      "en": "Prophet",
+      "es": "Prophet"
+    },
+    {
+      "en": "XGBoost",
+      "es": "XGBoost"
+    },
+    {
+      "en": "GAM",
+      "es": "GAM"
+    },
+    {
+      "en": "Random Forest",
+      "es": "Bosque Aleatorio"
+    },
+    {
+      "en": "NNETAR",
+      "es": "NNETAR"
+    },
+    {
+      "en": "Forecast Horizon (Periods):",
+      "es": "Horizonte de Pronóstico (Períodos):"
+    },
+    {
+      "en": "Run Forecast",
+      "es": "Ejecutar Pronóstico"
+    },
+    {
+      "en": "Configure Model Parameters:",
+      "es": "Configurar Parámetros del Modelo:"
+    },
+    {
+      "en": "ARIMA Parameters",
+      "es": "Parámetros ARIMA"
+    },
+    {
+      "en": "ETS Parameters",
+      "es": "Parámetros ETS"
+    },
+    {
+      "en": "TBATS Parameters",
+      "es": "Parámetros TBATS"
+    },
+    {
+      "en": "Prophet Parameters",
+      "es": "Parámetros Prophet"
+    },
+    {
+      "en": "XGBoost Parameters",
+      "es": "Parámetros XGBoost"
+    },
+    {
+      "en": "Random Forest Parameters",
+      "es": "Parámetros Bosque Aleatorio"
+    },
+    {
+      "en": "GAM Parameters",
+      "es": "Parámetros GAM"
+    },
+    {
+      "en": "NNETAR Parameters",
+      "es": "Parámetros NNETAR"
+    },
+    {
+      "en": "Auto ARIMA (auto.arima)",
+      "es": "ARIMA Automático (auto.arima)"
+    },
+    {
+      "en": "Order p (AR):",
+      "es": "Orden p (AR):"
+    },
+    {
+      "en": "Order d (Diff):",
+      "es": "Orden d (Diff):"
+    },
+    {
+      "en": "Order q (MA):",
+      "es": "Orden q (MA):"
+    },
+    {
+      "en": "Seasonal ARIMA",
+      "es": "ARIMA Estacional"
+    },
+    {
+      "en": "Seasonal P (SAR):",
+      "es": "P Estacional (SAR):"
+    },
+    {
+      "en": "Seasonal D (SDiff):",
+      "es": "D Estacional (SDiff):"
+    },
+    {
+      "en": "Seasonal Q (SMA):",
+      "es": "Q Estacional (SMA):"
+    },
+    {
+      "en": "Seasonal Period (e.g., 7 for daily/weekly, 52 for weekly/yearly):",
+      "es": "Período Estacional (ej: 7 para diario/semanal, 52 para semanal/anual):"
+    },
+    {
+      "en": "Manual ETS Configuration",
+      "es": "Configuración Manual de ETS"
+    },
+    {
+      "en": "Error Component (E):",
+      "es": "Componente de Error (E):"
+    },
+    {
+      "en": "Trend Component (T):",
+      "es": "Componente de Tendencia (T):"
+    },
+    {
+      "en": "Seasonal Component (S):",
+      "es": "Componente Estacional (S):"
+    },
+    {
+      "en": "Damped Trend:",
+      "es": "Tendencia Amortiguada:"
+    },
+    {
+      "en": "Auto (Z)",
+      "es": "Automático (Z)"
+    },
+    {
+      "en": "Additive (A)",
+      "es": "Aditivo (A)"
+    },
+    {
+      "en": "Multiplicative (M)",
+      "es": "Multiplicativo (M)"
+    },
+    {
+      "en": "None (N)",
+      "es": "Ninguno (N)"
+    },
+    {
+      "en": "Auto (NULL)",
+      "es": "Automático (NULL)"
+    },
+    {
+      "en": "Yes (TRUE)",
+      "es": "Sí (VERDADERO)"
+    },
+    {
+      "en": "No (FALSE)",
+      "es": "No (FALSO)"
+    },
+    {
+      "en": "TBATS model is run with automatic parameter selection.",
+      "es": "El modelo TBATS se ejecuta con selección automática de parámetros."
+    },
+    {
+      "en": "Yearly Seasonality",
+      "es": "Estacionalidad Anual"
+    },
+    {
+      "en": "Weekly Seasonality",
+      "es": "Estacionalidad Semanal"
+    },
+    {
+      "en": "Daily Seasonality (for daily data)",
+      "es": "Estacionalidad Diaria (para datos diarios)"
+    },
+    {
+      "en": "Growth Model:",
+      "es": "Modelo de Crecimiento:"
+    },
+    {
+      "en": "Capacity (Cap for Logistic Growth):",
+      "es": "Capacidad (Cap para Crecimiento Logístico):"
+    },
+    {
+      "en": "Changepoint Prior Scale:",
+      "es": "Escala a Priori del Punto de Cambio:"
+    },
+    {
+      "en": "Upload External Regressors CSV (optional, cols: ds, regressor1, ...)",
+      "es": "Subir CSV de Regresores Externos (opcional, cols: ds, regresor1, ...)"
+    },
+    {
+      "en": "Enable Hyperparameter Tuning",
+      "es": "Habilitar Ajuste de Hiperparámetros"
+    },
+    {
+      "en": "Number of Rounds (Trees):",
+      "es": "Número de Rondas (Árboles):"
+    },
+    {
+      "en": "Learning Rate (eta):",
+      "es": "Tasa de Aprendizaje (eta):"
+    },
+    {
+      "en": "Max Tree Depth:",
+      "es": "Profundidad Máxima del Árbol:"
+    },
+    {
+      "en": "Subsample Ratio of Training Instances:",
+      "es": "Ratio de Submuestreo de Instancias de Entrenamiento:"
+    },
+    {
+      "en": "Column Sample Ratio per Tree:",
+      "es": "Ratio de Muestreo de Columnas por Árbol:"
+    },
+    {
+      "en": "Min Split Loss (gamma):",
+      "es": "Pérdida Mínima por División (gamma):"
+    },
+    {
+      "en": "Number of Trees:",
+      "es": "Número de Árboles:"
+    },
+    {
+      "en": "Variables per Split (mtry, 0 for auto if tuning off):",
+      "es": "Variables por División (mtry, 0 para auto si ajuste desactivado):"
+    },
+    {
+      "en": "Min Node Size:",
+      "es": "Tamaño Mínimo del Nodo:"
+    },
+    {
+      "en": "Trend Type:",
+      "es": "Tipo de Tendencia:"
+    },
+    {
+      "en": "Linear",
+      "es": "Lineal"
+    },
+    {
+      "en": "Smooth (Spline)",
+      "es": "Suave (Spline)"
+    },
+    {
+      "en": "Include Yearly Seasonality (Day of Year)",
+      "es": "Incluir Estacionalidad Anual (Día del Año)"
+    },
+    {
+      "en": "Include Weekly Seasonality (Day of Week)",
+      "es": "Incluir Estacionalidad Semanal (Día de la Semana)"
+    },
+    {
+      "en": "Neural Network Autoregressive Model. Predicts based on lagged values of the time series.",
+      "es": "Modelo Autorregresivo de Red Neuronal. Predice basado en valores rezagados de la serie temporal."
+    },
+    {
+      "en": "Model Structure:",
+      "es": "Estructura del Modelo:"
+    },
+    {
+      "en": "Non-seasonal lags (p) (0 for auto if P=0, or specify e.g., 1, 2)",
+      "es": "Rezagos no estacionales (p) (0 para auto si P=0, o especificar ej: 1, 2)"
+    },
+    {
+      "en": "Seasonal lags (P) (0 for non-seasonal, or specify e.g., 1, 2 for seasonal)",
+      "es": "Rezagos estacionales (P) (0 para no estacional, o especificar ej: 1, 2 para estacional)"
+    },
+    {
+      "en": "Set p/P to 0 to let nnetar choose automatically. If both >0, specific lags are used. Seasonal P is only effective if data frequency > 1 (e.g., daily/weekly).",
+      "es": "Establecer p/P en 0 para que nnetar elija automáticamente. Si ambos >0, se usan rezagos específicos. P estacional solo es efectivo si la frecuencia de los datos > 1 (ej: diario/semanal)."
+    },
+    {
+      "en": "Hidden Layer Neurons (size) - Method",
+      "es": "Neuronas de Capa Oculta (tamaño) - Método"
+    },
+    {
+      "en": "Auto",
+      "es": "Automático"
+    },
+    {
+      "en": "Manual",
+      "es": "Manual"
+    },
+    {
+      "en": "If 'Auto': For seasonal models (P>0), size is approx. (p+P+1)/2. For non-seasonal (P=0, p>0), size is approx. (p+1)/2. If p=0 and P=0, nnetar attempts to choose p, P, and size.",
+      "es": "Si 'Auto': Para modelos estacionales (P>0), tamaño es aprox. (p+P+1)/2. Para no estacionales (P=0, p>0), tamaño es aprox. (p+1)/2. Si p=0 y P=0, nnetar intenta elegir p, P, y tamaño."
+    },
+    {
+      "en": "Number of Hidden Neurons",
+      "es": "Número de Neuronas Ocultas"
+    },
+    {
+      "en": "Repeats (for stability)",
+      "es": "Repeticiones (por estabilidad)"
+    },
+    {
+      "en": "Data Preprocessing:",
+      "es": "Preprocesamiento de Datos:"
+    },
+    {
+      "en": "Box-Cox Lambda (Auto select)",
+      "es": "Lambda de Box-Cox (Selección Automática)"
+    },
+    {
+      "en": "Manual Lambda (0-1 for Box-Cox, leave NA/blank for no transform)",
+      "es": "Lambda Manual (0-1 para Box-Cox, dejar NA/vacío para no transformar)"
+    },
+    {
+      "en": "Forecast Plot",
+      "es": "Gráfico de Pronóstico"
+    },
+    {
+      "en": "Forecast vs Actuals",
+      "es": "Pronóstico vs Reales"
+    },
+    {
+      "en": "Value",
+      "es": "Valor"
+    },
+    {
+      "en": "Date",
+      "es": "Fecha"
+    },
+    {
+      "en": "Models",
+      "es": "Modelos"
+    },
+    {
+      "en": "Holidays",
+      "es": "Feriados"
+    },
+    {
+      "en": "Notifications",
+      "es": "Notificaciones"
+    },
+    {
+      "en": "File uploaded successfully!",
+      "es": "¡Archivo cargado con éxito!"
+    },
+    {
+      "en": "Error reading uploaded file:",
+      "es": "Error al leer el archivo cargado:"
+    },
+    {
+      "en": "Selected default dataset loaded successfully!",
+      "es": "¡Conjunto de datos predeterminado cargado con éxito!"
+    },
+    {
+      "en": "Error reading selected default file:",
+      "es": "Error al leer el archivo predeterminado seleccionado:"
+    },
+    {
+      "en": "Global holidays file uploaded and processed successfully.",
+      "es": "Archivo de feriados globales cargado y procesado con éxito."
+    },
+    {
+      "en": "Error processing global holidays file. Please check format (CSV with 'Fecha', 'Feriados_chilenos' columns) and content. Original error:",
+      "es": "Error al procesar el archivo de feriados globales. Por favor, verifique el formato (CSV con columnas 'Fecha', 'Feriados_chilenos') y el contenido. Error original:"
+    },
+    {
+      "en": "Default global holidays loaded successfully.",
+      "es": "Feriados globales predeterminados cargados con éxito."
+    },
+    {
+      "en": "Error loading default global holidays. Please check the file and application configuration. Original error:",
+      "es": "Error al cargar los feriados globales predeterminados. Por favor, verifique el archivo y la configuración de la aplicación. Error original:"
+    },
+    {
+      "en": "Please select at least one model to run.",
+      "es": "Por favor, seleccione al menos un modelo para ejecutar."
+    },
+    {
+      "en": "Running Forecast...",
+      "es": "Ejecutando Pronóstico..."
+    },
+    {
+      "en": "Running",
+      "es": "Ejecutando"
+    },
+    {
+      "en": "of",
+      "es": "de"
+    },
+    {
+      "en": "forecast complete.",
+      "es": "pronóstico completado."
+    },
+    {
+      "en": "Error during",
+      "es": "Error durante"
+    },
+    {
+      "en": "model processing.",
+      "es": "procesamiento del modelo."
+    },
+    {
+      "en": "Please check this model's configuration and input data suitability.",
+      "es": "Por favor, verifique la configuración de este modelo y la idoneidad de los datos de entrada."
+    },
+    {
+      "en": "Specific error:",
+      "es": "Error específico:"
+    },
+    {
+      "en": "All selected models failed to produce forecasts.",
+      "es": "Todos los modelos seleccionados fallaron al producir pronósticos."
+    },
+    {
+      "en": "An unexpected error occurred during the overall forecast process.",
+      "es": "Ocurrió un error inesperado durante el proceso general de pronóstico."
+    },
+    {
+      "en": "Please review your data and general settings.",
+      "es": "Por favor, revise sus datos y configuraciones generales."
+    },
+    {
+      "en": "Details:",
+      "es": "Detalles:"
+    },
+    {
+      "en": "Enter filename for session (e.g., my_forecast_session):",
+      "es": "Ingrese el nombre del archivo para la sesión (ej: mi_sesion_pronostico):"
+    },
+    {
+      "en": "Cancel",
+      "es": "Cancelar"
+    },
+    {
+      "en": "Save to RDS",
+      "es": "Guardar en RDS"
+    },
+    {
+      "en": "Saving session... Please wait.",
+      "es": "Guardando sesión... Por favor espere."
+    },
+    {
+      "en": "Session saved to",
+      "es": "Sesión guardada en"
+    },
+    {
+      "en": "Error saving session:",
+      "es": "Error al guardar la sesión:"
+    },
+    {
+      "en": "Upload Session File (.rds)",
+      "es": "Subir Archivo de Sesión (.rds)"
+    },
+    {
+      "en": "No file selected",
+      "es": "Ningún archivo seleccionado"
+    },
+    {
+      "en": "Loading session... Please wait.",
+      "es": "Cargando sesión... Por favor espere."
+    },
+    {
+      "en": "Session loaded successfully! Please re-upload your",
+      "es": "¡Sesión cargada con éxito! Por favor, vuelva a cargar su"
+    },
+    {
+      "en": "main data file",
+      "es": "archivo de datos principal"
+    },
+    {
+      "en": "and",
+      "es": "y"
+    },
+    {
+      "en": "global holidays file",
+      "es": "archivo de feriados globales"
+    },
+    {
+      "en": "if they were part of the saved session.",
+      "es": "si formaban parte de la sesión guardada."
+    },
+    {
+      "en": "Error loading session:",
+      "es": "Error al cargar la sesión:"
+    },
+    {
+      "en": "Generating",
+      "es": "Generando"
+    },
+    {
+      "en": "report...",
+      "es": "informe..."
+    },
+    {
+      "en": "Preparing data...",
+      "es": "Preparando datos..."
+    },
+    {
+      "en": "Formatting model summaries...",
+      "es": "Formateando resúmenes de modelos..."
+    },
+    {
+      "en": "Setting up report template...",
+      "es": "Configurando plantilla de informe..."
+    },
+    {
+      "en": "Rendering report...",
+      "es": "Renderizando informe..."
+    },
+    {
+      "en": "TinyTeX is not installed. PDF reports require a LaTeX distribution. Consider installing TinyTeX with tinytex::install_tinytex().",
+      "es": "TinyTeX no está instalado. Los informes PDF requieren una distribución LaTeX. Considere instalar TinyTeX con tinytex::install_tinytex()."
+    },
+    {
+      "en": "Finalizing...",
+      "es": "Finalizando..."
+    },
+    {
+      "en": "Report generated successfully!",
+      "es": "¡Informe generado con éxito!"
+    },
+    {
+      "en": "Error during rmarkdown::render:",
+      "es": "Error durante rmarkdown::render:"
+    },
+    {
+      "en": "This often means essential LaTeX packages are missing.",
+      "es": "Esto a menudo significa que faltan paquetes LaTeX esenciales."
+    },
+    {
+      "en": "If using TinyTeX, try running tinytex::tlmgr_install(c('fancyhdr', 'titling', 'framed')) or check the .log file mentioned in the error for more details.",
+      "es": "Si usa TinyTeX, intente ejecutar tinytex::tlmgr_install(c('fancyhdr', 'titling', 'framed')) o revise el archivo .log mencionado en el error para más detalles."
+    },
+    {
+      "en": "The log file path is often in the error message:",
+      "es": "La ruta del archivo de registro suele estar en el mensaje de error:"
+    },
+    {
+      "en": "Need at least 2 data points for decomposition plot.",
+      "es": "Se necesitan al menos 2 puntos de datos para el gráfico de descomposición."
+    },
+    {
+      "en": "Aggregated data needs 'ds' and 'y' columns.",
+      "es": "Los datos agregados necesitan las columnas 'ds' e 'y'."
+    },
+    {
+      "en": "Decomposition requires seasonal data (frequency > 1).",
+      "es": "La descomposición requiere datos estacionales (frecuencia > 1)."
+    },
+    {
+      "en": "Need at least 2 full seasonal cycles (%d points) for STL decomposition.",
+      "es": "Se necesitan al menos 2 ciclos estacionales completos (%d puntos) para la descomposición STL."
+    },
+    {
+      "en": "Time Series Decomposition (STL)",
+      "es": "Descomposición de Series Temporales (STL)"
+    },
+    {
+      "en": "Data (Decomp)",
+      "es": "Datos (Descomp)"
+    },
+    {
+      "en": "Seasonal (Decomp)",
+      "es": "Estacional (Descomp)"
+    },
+    {
+      "en": "Trend (Decomp)",
+      "es": "Tendencia (Descomp)"
+    },
+    {
+      "en": "Remainder (Decomp)",
+      "es": "Resto (Descomp)"
+    },
+    {
+      "en": "Select Model to View Summary:",
+      "es": "Seleccionar Modelo para Ver Resumen:"
+    },
+    {
+      "en": "Model Type:",
+      "es": "Tipo de Modelo:"
+    },
+    {
+      "en": "ARIMA (Autoregressive Integrated Moving Average)",
+      "es": "ARIMA (Autoregresivo Integrado de Media Móvil)"
+    },
+    {
+      "en": "Configuration:",
+      "es": "Configuración:"
+    },
+    {
+      "en": "Selection Method:",
+      "es": "Método de Selección:"
+    },
+    {
+      "en": "Automatic (auto.arima)",
+      "es": "Automático (auto.arima)"
+    },
+    {
+      "en": "Non-Seasonal Order (p, d, q):",
+      "es": "Orden No Estacional (p, d, q):"
+    },
+    {
+      "en": "Seasonal Component:",
+      "es": "Componente Estacional:"
+    },
+    {
+      "en": "Enabled (Period=",
+      "es": "Habilitado (Período="
+    },
+    {
+      "en": "Disabled",
+      "es": "Deshabilitado"
+    },
+    {
+      "en": "Seasonal Order (P, D, Q):",
+      "es": "Orden Estacional (P, D, Q):"
+    },
+    {
+      "en": "Interpretation:",
+      "es": "Interpretación:"
+    },
+    {
+      "en": "ARIMA models capture linear time dependencies.",
+      "es": "Los modelos ARIMA capturan dependencias temporales lineales."
+    },
+    {
+      "en": "p/P: Autoregressive components (dependency on past values).",
+      "es": "p/P: Componentes autorregresivos (dependencia de valores pasados)."
+    },
+    {
+      "en": "d/D: Differencing components (to achieve stationarity).",
+      "es": "d/D: Componentes de diferenciación (para alcanzar estacionariedad)."
+    },
+    {
+      "en": "q/Q: Moving Average components (dependency on past errors).",
+      "es": "q/Q: Componentes de media móvil (dependencia de errores pasados)."
+    },
+    {
+      "en": "A non-seasonal differencing order (d) of %d suggests the model is differencing the data %d time(s) to make it stationary, likely removing %s.",
+      "es": "Un orden de diferenciación no estacional (d) de %d sugiere que el modelo está diferenciando los datos %d vez(veces) para hacerlo estacionario, probablemente eliminando %s."
+    },
+    {
+      "en": "day-to-day trends",
+      "es": "tendencias diarias"
+    },
+    {
+      "en": "week-to-week trends",
+      "es": "tendencias semanales"
+    },
+    {
+      "en": "trends",
+      "es": "tendencias"
+    },
+    {
+      "en": "A seasonal differencing order (D) of %d suggests the model is using seasonal differencing to remove %s.",
+      "es": "Un orden de diferenciación estacional (D) de %d sugiere que el modelo está usando diferenciación estacional para eliminar %s."
+    },
+    {
+      "en": "weekly patterns (comparing to same day last week)",
+      "es": "patrones semanales (comparando con el mismo día de la semana pasada)"
+    },
+    {
+      "en": "yearly patterns (comparing to same week last year)",
+      "es": "patrones anuales (comparando con la misma semana del año pasado)"
+    },
+    {
+      "en": "patterns with a period of %d",
+      "es": "patrones con un período de %d"
+    },
+    {
+      "en": "ETS (Error, Trend, Seasonality)",
+      "es": "ETS (Error, Tendencia, Estacionalidad)"
+    },
+    {
+      "en": "Manual Spec: E=%s, T=%s, S=%s, Damped=%s",
+      "es": "Espec. Manual: E=%s, T=%s, S=%s, Amortiguado=%s"
+    },
+    {
+      "en": "Automatic Selection (based on AICc)",
+      "es": "Selección Automática (basada en AICc)"
+    },
+    {
+      "en": "Fitted Model:",
+      "es": "Modelo Ajustado:"
+    },
+    {
+      "en": "(Not available)",
+      "es": "(No disponible)"
+    },
+    {
+      "en": "TBATS",
+      "es": "TBATS"
+    },
+    {
+      "en": "Automatic selection via forecast::tbats().",
+      "es": "Selección automática vía forecast::tbats()."
+    },
+    {
+      "en": "Handles complex seasonality (multiple periods, non-integer) using trigonometric functions (Fourier series).",
+      "es": "Maneja estacionalidad compleja (múltiples períodos, no enteros) usando funciones trigonométricas (series de Fourier)."
+    },
+    {
+      "en": "Also models trend, ARMA error correlation, and can apply Box-Cox transformation.",
+      "es": "También modela tendencia, correlación de error ARMA y puede aplicar transformación Box-Cox."
+    },
+    {
+      "en": "Prophet (Additive Regression Model)",
+      "es": "Prophet (Modelo de Regresión Aditiva)"
+    },
+    {
+      "en": "Capacity (Cap):",
+      "es": "Capacidad (Cap):"
+    },
+    {
+      "en": "Holidays: Custom holiday file provided.",
+      "es": "Feriados: Archivo de feriados personalizado proporcionado."
+    },
+    {
+      "en": "Holidays: None provided.",
+      "es": "Feriados: Ninguno proporcionado."
+    },
+    {
+      "en": "External Regressors:",
+      "es": "Regresores Externos:"
+    },
+    {
+      "en": "External Regressors: None provided.",
+      "es": "Regresores Externos: Ninguno proporcionado."
+    },
+    {
+      "en": "Prophet decomposes the time series into trend, seasonalities, and holiday effects.",
+      "es": "Prophet descompone la serie temporal en tendencia, estacionalidades y efectos de feriados."
+    },
+    {
+      "en": "Trend modeled as piecewise %s.",
+      "es": "Tendencia modelada como %s a trozos."
+    },
+    {
+      "en": "Changepoint Prior Scale (%s) controls trend flexibility (larger = more flexible).",
+      "es": "Escala a Priori del Punto de Cambio (%s) controla la flexibilidad de la tendencia (mayor = más flexible)."
+    },
+    {
+      "en": "Seasonalities Enabled:",
+      "es": "Estacionalidades Habilitadas:"
+    },
+    {
+      "en": "Custom holidays included.",
+      "es": "Feriados personalizados incluidos."
+    },
+    {
+      "en": "XGBoost (eXtreme Gradient Boosting - Tree-based Ensemble)",
+      "es": "XGBoost (eXtreme Gradient Boosting - Ensamblaje Basado en Árboles)"
+    },
+    {
+      "en": "Feature Engineering:",
+      "es": "Ingeniería de Características:"
+    },
+    {
+      "en": "Time series features generated automatically via a recipe:",
+      "es": "Características de series temporales generadas automáticamente mediante una receta:"
+    },
+    {
+      "en": "Date components (year, month, week, day of week, etc.)",
+      "es": "Componentes de fecha (año, mes, semana, día de la semana, etc.)"
+    },
+    {
+      "en": "Lagged values of the target variable.",
+      "es": "Valores rezagados de la variable objetivo."
+    },
+    {
+      "en": "Rolling window statistics (mean, sd) on lagged values.",
+      "es": "Estadísticas de ventana móvil (media, de) sobre valores rezagados."
+    },
+    {
+      "en": "Fourier terms for seasonality.",
+      "es": "Términos de Fourier para estacionalidad."
+    },
+    {
+      "en": "Hyperparameters:",
+      "es": "Hiperparámetros:"
+    },
+    {
+      "en": "Tuning Method: Time Series CV + tune_grid",
+      "es": "Método de Ajuste: CV de Series Temporales + tune_grid"
+    },
+    {
+      "en": "Best Parameters Found:",
+      "es": "Mejores Parámetros Encontrados:"
+    },
+    {
+      "en": "Number of Rounds (Trees): %s",
+      "es": "Número de Rondas (Árboles): %s"
+    },
+    {
+      "en": "Learning Rate (eta): %s",
+      "es": "Tasa de Aprendizaje (eta): %s"
+    },
+    {
+      "en": "Max Tree Depth: %s",
+      "es": "Profundidad Máxima del Árbol: %s"
+    },
+    {
+      "en": "Subsample Ratio: %s",
+      "es": "Ratio de Submuestreo: %s"
+    },
+    {
+      "en": "Column Sample Ratio: %s",
+      "es": "Ratio de Muestreo de Columnas: %s"
+    },
+    {
+      "en": "Min Split Loss (gamma): %s",
+      "es": "Pérdida Mínima por División (gamma): %s"
+    },
+    {
+      "en": "XGBoost captures potentially complex non-linear patterns and feature interactions.",
+      "es": "XGBoost captura patrones no lineales potencialmente complejos e interacciones de características."
+    },
+    {
+      "en": "Relies heavily on engineered features (lags, date parts, rolling stats, Fourier terms) to understand time dynamics.",
+      "es": "Depende en gran medida de características diseñadas (rezagos, partes de fechas, estadísticas móviles, términos de Fourier) para comprender la dinámica temporal."
+    },
+    {
+      "en": "Does not inherently extrapolate trends like ARIMA/Prophet.",
+      "es": "No extrapola inherentemente tendencias como ARIMA/Prophet."
+    },
+    {
+      "en": "GAM (Generalized Additive Model)",
+      "es": "GAM (Modelo Aditivo Generalizado)"
+    },
+    {
+      "en": "Trend Type: %s",
+      "es": "Tipo de Tendencia: %s"
+    },
+    {
+      "en": "Yearly Seasonality (Day of Year): %s",
+      "es": "Estacionalidad Anual (Día del Año): %s"
+    },
+    {
+      "en": "Weekly Seasonality (Day of Week): %s",
+      "es": "Estacionalidad Semanal (Día de la Semana): %s"
+    },
+    {
+      "en": "Included (Smooth)",
+      "es": "Incluido (Suave)"
+    },
+    {
+      "en": "Excluded",
+      "es": "Excluido"
+    },
+    {
+      "en": "Models components using flexible smooth functions (splines).",
+      "es": "Modela componentes usando funciones suaves flexibles (splines)."
+    },
+    {
+      "en": "Captures non-linear trends and complex seasonal patterns.",
+      "es": "Captura tendencias no lineales y patrones estacionales complejos."
+    },
+    {
+      "en": "Assumes errors are independent (autocorrelation might need addressing via residuals or model structure if significant).",
+      "es": "Asume que los errores son independientes (la autocorrelación podría necesitar ser abordada mediante residuos o estructura del modelo si es significativa)."
+    },
+    {
+      "en": "Random Forest (Tree Ensemble via 'ranger')",
+      "es": "Bosque Aleatorio (Ensamblaje de Árboles vía 'ranger')"
+    },
+    {
+      "en": "Variables per Split (mtry): %s",
+      "es": "Variables por División (mtry): %s"
+    },
+    {
+      "en": "Builds multiple independent decision trees on bootstrapped samples of data and features.",
+      "es": "Construye múltiples árboles de decisión independientes sobre muestras bootstrap de datos y características."
+    },
+    {
+      "en": "Predictions are typically the average of individual tree predictions.",
+      "es": "Las predicciones son típicamente el promedio de las predicciones de los árboles individuales."
+    },
+    {
+      "en": "Effective for non-linear patterns and interactions; often robust to overfitting.",
+      "es": "Eficaz para patrones no lineales e interacciones; a menudo robusto al sobreajuste."
+    },
+    {
+      "en": "Like XGBoost, relies on engineered features for time dynamics.",
+      "es": "Al igual que XGBoost, depende de características diseñadas para la dinámica temporal."
+    },
+    {
+      "en": "NNETAR (Neural Network Autoregression)",
+      "es": "NNETAR (Autorregresión de Red Neuronal)"
+    },
+    {
+      "en": "Non-seasonal Lags (p): %s",
+      "es": "Rezagos No Estacionales (p): %s"
+    },
+    {
+      "en": "Seasonal Lags (P): %s",
+      "es": "Rezagos Estacionales (P): %s"
+    },
+    {
+      "en": "Hidden Layer Size Calculation: %s",
+      "es": "Cálculo del Tamaño de la Capa Oculta: %s"
+    },
+    {
+      "en": "Manual Hidden Layer Size (size): %s",
+      "es": "Tamaño Manual de Capa Oculta (size): %s"
+    },
+    {
+      "en": "Number of Networks to Average (repeats): %s",
+      "es": "Número de Redes a Promediar (repeats): %s"
+    },
+    {
+      "en": "Box-Cox Transformation (lambda): %s",
+      "es": "Transformación Box-Cox (lambda): %s"
+    },
+    {
+      "en": "Fitted Model Details:",
+      "es": "Detalles del Modelo Ajustado:"
+    },
+    {
+      "en": "Frequency Used: %s",
+      "es": "Frecuencia Utilizada: %s"
+    },
+    {
+      "en": "NNETAR is a feed-forward neural network model that uses lagged values of the time series as inputs.",
+      "es": "NNETAR es un modelo de red neuronal prealimentada que utiliza valores rezagados de la serie temporal como entradas."
+    },
+    {
+      "en": "p (Non-seasonal lags): Number of past non-seasonal observations used as predictors.",
+      "es": "p (Rezagos no estacionales): Número de observaciones no estacionales pasadas utilizadas como predictores."
+    },
+    {
+      "en": "P (Seasonal lags): Number of past seasonal observations (e.g., same period last year/season) used as predictors.",
+      "es": "P (Rezagos estacionales): Número de observaciones estacionales pasadas (ej: mismo período del año/temporada anterior) utilizadas como predictores."
+    },
+    {
+      "en": "Size (Hidden Layer Nodes): Number of nodes in the single hidden layer. 'auto' typically calculates as (p+P+1)/2. More nodes allow for more complex patterns but risk overfitting.",
+      "es": "Size (Nodos de Capa Oculta): Número de nodos en la única capa oculta. 'auto' típicamente calcula como (p+P+1)/2. Más nodos permiten patrones más complejos pero arriesgan sobreajuste."
+    },
+    {
+      "en": "Repeats: The model is fitted multiple times (e.g., %s times) with different random starting weights, and the results are averaged to improve robustness and avoid poor local optima.",
+      "es": "Repeats: El modelo se ajusta múltiples veces (ej: %s veces) con diferentes pesos iniciales aleatorios, y los resultados se promedian para mejorar la robustez y evitar óptimos locales pobres."
+    },
+    {
+      "en": "Lambda: Parameter for Box-Cox transformation. 'auto' selects lambda automatically; a specific value applies that transformation to stabilize variance.",
+      "es": "Lambda: Parámetro para la transformación Box-Cox. 'auto' selecciona lambda automáticamente; un valor específico aplica esa transformación para estabilizar la varianza."
+    },
+    {
+      "en": "Summary not available for this model type.",
+      "es": "Resumen no disponible para este tipo de modelo."
+    },
+    {
+      "en": "Metrics are not available yet. Run a forecast.",
+      "es": "Las métricas aún no están disponibles. Ejecute un pronóstico."
+    },
+    {
+      "en": "Error formatting metrics table.",
+      "es": "Error al formatear la tabla de métricas."
+    },
+    {
+      "en": "Train",
+      "es": "Entrenamiento"
+    },
+    {
+      "en": "Test",
+      "es": "Prueba"
+    },
+    {
+      "en": "CV Controls",
+      "es": "Controles de CV"
+    },
+    {
+      "en": "Select Models for CV:",
+      "es": "Seleccionar Modelos para CV:"
+    },
+    {
+      "en": "Cross-Validation Parameters:",
+      "es": "Parámetros de Validación Cruzada:"
+    },
+    {
+      "en": "Initial Training Window (periods):",
+      "es": "Ventana Inicial de Entrenamiento (períodos):"
+    },
+    {
+      "en": "Forecast Horizon (periods per fold):",
+      "es": "Horizonte de Pronóstico (períodos por pliegue):"
+    },
+    {
+      "en": "Skip (periods between folds):",
+      "es": "Salto (períodos entre pliegues):"
+    },
+    {
+      "en": "Cumulative Training Window?",
+      "es": "¿Ventana de Entrenamiento Acumulativa?"
+    },
+    {
+      "en": "Run Cross-Validation",
+      "es": "Ejecutar Validación Cruzada"
+    },
+    {
+      "en": "Cross-Validation Results",
+      "es": "Resultados de Validación Cruzada"
+    },
+    {
+      "en": "Cross-Validation Mean Metrics",
+      "es": "Métricas Promedio de Validación Cruzada"
+    },
+    {
+      "en": "Cross-Validation Metric Distributions",
+      "es": "Distribuciones de Métricas de Validación Cruzada"
+    },
+    {
+      "en": "Not enough data for the specified initial window and horizon. Please adjust CV parameters or use a larger dataset.",
+      "es": "No hay suficientes datos para la ventana inicial y el horizonte especificados. Ajuste los parámetros de CV o use un conjunto de datos más grande."
+    },
+    {
+      "en": "Please select at least one model for Cross-Validation.",
+      "es": "Por favor, seleccione al menos un modelo para Validación Cruzada."
+    },
+    {
+      "en": "Time series CV split generation resulted in 0 slices. Adjust parameters (e.g., reduce initial window, horizon, or skip).",
+      "es": "La generación de divisiones de CV de series temporales resultó en 0 tramos. Ajuste los parámetros (ej: reduzca la ventana inicial, el horizonte o el salto)."
+    },
+    {
+      "en": "Running Cross-Validation...",
+      "es": "Ejecutando Validación Cruzada..."
+    },
+    {
+      "en": "Model: %s - Slice %d of %d",
+      "es": "Modelo: %s - Tramo %d de %d"
+    },
+    {
+      "en": "Cross-validation complete.",
+      "es": "Validación cruzada completada."
+    },
+    {
+      "en": "Cross-validation ran but no metrics were calculated.",
+      "es": "Se ejecutó la validación cruzada pero no se calcularon métricas."
+    },
+    {
+      "en": "Mean Cross-Validation Metrics",
+      "es": "Métricas Promedio de Validación Cruzada"
+    },
+    {
+      "en": "Distribution of CV Metrics Across Folds",
+      "es": "Distribución de Métricas de CV Entre Pliegues"
+    },
+    {
+      "en": "Metric Value",
+      "es": "Valor de la Métrica"
+    },
+    {
+      "en": "Upload a CSV or XLSX file. Ensure it has a date column and a numeric value column for forecasting.",
+      "es": "Suba un archivo CSV o XLSX. Asegúrese de que tenga una columna de fecha y una columna de valor numérico para el pronóstico."
+    },
+    {
+      "en": "Select the column containing the dates for the time series.",
+      "es": "Seleccione la columna que contiene las fechas para la serie temporal."
+    },
+    {
+      "en": "Select the numeric column you want to forecast.",
+      "es": "Seleccione la columna numérica que desea pronosticar."
+    },
+    {
+      "en": "Number of future periods (e.g., days, weeks based on aggregation) to forecast.",
+      "es": "Número de períodos futuros (ej: días, semanas según la agregación) a pronosticar."
+    },
+    {
+      "en": "Check to use automated ARIMA order selection (auto.arima). Uncheck for manual p,d,q,P,D,Q specification.",
+      "es": "Marque para usar la selección automática de orden ARIMA (auto.arima). Desmarque para especificar manualmente p,d,q,P,D,Q."
+    },
+    {
+      "en": "Order of the non-seasonal autoregressive (AR) part.",
+      "es": "Orden de la parte autorregresiva (AR) no estacional."
+    },
+    {
+      "en": "Order of non-seasonal differencing.",
+      "es": "Orden de la diferenciación no estacional."
+    },
+    {
+      "en": "Order of the non-seasonal moving average (MA) part.",
+      "es": "Orden de la parte de media móvil (MA) no estacional."
+    },
+    {
+      "en": "Check to include seasonal components (P,D,Q,Period) in the ARIMA model.",
+      "es": "Marque para incluir componentes estacionales (P,D,Q,Período) en el modelo ARIMA."
+    },
+    {
+      "en": "Number of observations per seasonal cycle (e.g., 7 for daily data with weekly seasonality, 52 for weekly data with yearly seasonality).",
+      "es": "Número de observaciones por ciclo estacional (ej: 7 para datos diarios con estacionalidad semanal, 52 para datos semanales con estacionalidad anual)."
+    },
+    {
+      "en": "Flexibility of the automatic changepoint detection. Larger values allow more changepoints and a more flexible trend.",
+      "es": "Flexibilidad de la detección automática de puntos de cambio. Valores mayores permiten más puntos de cambio y una tendencia más flexible."
+    },
+    {
+      "en": "Optional CSV file with additional regressors. Must include 'ds' column and regressor columns. Data should cover training and forecast periods.",
+      "es": "Archivo CSV opcional con regresores adicionales. Debe incluir la columna 'ds' y columnas de regresores. Los datos deben cubrir los períodos de entrenamiento y pronóstico."
+    },
+    {
+      "en": "Enable automatic hyperparameter tuning for XGBoost using time series cross-validation. If unchecked, uses the parameters below.",
+      "es": "Habilitar el ajuste automático de hiperparámetros para XGBoost mediante validación cruzada de series temporales. Si está desmarcado, utiliza los parámetros siguientes."
+    },
+    {
+      "en": "Maximum number of boosting rounds (trees).",
+      "es": "Número máximo de rondas de boosting (árboles)."
+    },
+    {
+      "en": "Learning rate. Smaller values make the boosting process more conservative.",
+      "es": "Tasa de aprendizaje. Valores más pequeños hacen que el proceso de boosting sea más conservador."
+    },
+    {
+      "en": "Enable automatic hyperparameter tuning for Random Forest using time series cross-validation. If unchecked, uses the parameters below.",
+      "es": "Habilitar el ajuste automático de hiperparámetros para Random Forest mediante validación cruzada de series temporales. Si está desmarcado, utiliza los parámetros siguientes."
+    },
+    {
+      "en": "Number of variables randomly sampled as candidates at each split. Set to 0 for default (sqrt(number of features)) if tuning is off.",
+      "es": "Número de variables muestreadas aleatoriamente como candidatas en cada división. Establezca en 0 para el valor predeterminado (sqrt(número de características)) si el ajuste está desactivado."
+    }
   ]
 }

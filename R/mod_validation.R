@@ -9,29 +9,29 @@ mod_validation_ui <- function(id) {
   ns <- NS(id)
   tagList(
     bslib::nav_panel(
-      title = "Validation",
+      title = textOutput(ns("ui_validation_nav_panel_title"), inline = TRUE),
       icon = shiny::icon("check-circle"), # Bootstrap icon for validation
       bslib::layout_sidebar(
         sidebar = bslib::sidebar(
-          title = "CV Controls",
+          title = textOutput(ns("ui_cv_sidebar_title_label"), inline = TRUE),
           width = "300px", # Adjust width as needed
           uiOutput(ns("cv_model_selector_ui")), # Dynamic UI for model selection
           hr(),
-          h5("Cross-Validation Parameters:"),
-          numericInput(ns("cv_initial_window"), "Initial Training Window (periods):", value = 90, min = 10), # e.g. 90 days
-          numericInput(ns("cv_horizon"), "Forecast Horizon (periods per fold):", value = 30, min = 1), # e.g. 30 days
-          numericInput(ns("cv_skip"), "Skip (periods between folds):", value = 15, min = 0), # e.g. 15 days
-          checkboxInput(ns("cv_cumulative"), "Cumulative Training Window?", value = FALSE),
-          actionButton(ns("run_cv_button"), "Run Cross-Validation", icon = icon("play"), class = "btn-primary btn-block")
+          h5(textOutput(ns("ui_cv_params_h5_title_label"), inline = TRUE)),
+          numericInput(ns("cv_initial_window"), textOutput(ns("ui_cv_initial_window_label"), inline = TRUE), value = 90, min = 10), # e.g. 90 days
+          numericInput(ns("cv_horizon"), textOutput(ns("ui_cv_horizon_label"), inline = TRUE), value = 30, min = 1), # e.g. 30 days
+          numericInput(ns("cv_skip"), textOutput(ns("ui_cv_skip_label"), inline = TRUE), value = 15, min = 0), # e.g. 15 days
+          checkboxInput(ns("cv_cumulative"), textOutput(ns("ui_cv_cumulative_label"), inline = TRUE), value = FALSE),
+          actionButton(ns("run_cv_button"), textOutput(ns("ui_cv_run_button_label"), inline = TRUE), icon = icon("play"), class = "btn-primary btn-block")
         ), # End sidebar
         # Main panel for CV results
-        h4("Cross-Validation Results"),
+        h4(textOutput(ns("ui_cv_results_h4_title_label"), inline = TRUE)),
         bslib::card(
-          bslib::card_header("Cross-Validation Mean Metrics"),
+          bslib::card_header(textOutput(ns("ui_cv_card_header_mean_metrics_label"), inline = TRUE)),
           DT::dataTableOutput(ns("cv_results_table_output"))
         ),
         bslib::card(
-          bslib::card_header("Cross-Validation Metric Distributions"),
+          bslib::card_header(textOutput(ns("ui_cv_card_header_metric_dist_label"), inline = TRUE)),
           plotOutput(ns("cv_results_plot_output"))
         )
       ) # End layout_sidebar
@@ -67,7 +67,7 @@ mod_validation_server <- function(id, reactive_run_models_summary, reactive_trai
       req(length(successful_model_names) > 0)
       
       checkboxGroupInput(ns("cv_model_selection_input"), # Use ns() here
-                         "Select Models for CV:",
+                         label = i18n$t("Select Models for CV:"),
                          choices = successful_model_names,
                          selected = successful_model_names)
     })
@@ -89,10 +89,10 @@ mod_validation_server <- function(id, reactive_run_models_summary, reactive_trai
       req(full_train_data)
       validate(
         need(nrow(full_train_data) > (initial_window_periods + horizon_periods),
-             "Not enough data for the specified initial window and horizon. Please adjust CV parameters or use a larger dataset.")
+             message = i18n$t("Not enough data for the specified initial window and horizon. Please adjust CV parameters or use a larger dataset."))
       )
       validate(
-        need(length(selected_cv_models) > 0, "Please select at least one model for Cross-Validation.")
+        need(length(selected_cv_models) > 0, message = i18n$t("Please select at least one model for Cross-Validation."))
       )
 
       # Time Series CV Splits
@@ -107,11 +107,11 @@ mod_validation_server <- function(id, reactive_run_models_summary, reactive_trai
       )
 
       message(paste("Number of CV slices generated:", nrow(ts_cv_splits)))
-      validate(need(nrow(ts_cv_splits) > 0, "Time series CV split generation resulted in 0 slices. Adjust parameters (e.g., reduce initial window, horizon, or skip)."))
+      validate(need(nrow(ts_cv_splits) > 0, message = i18n$t("Time series CV split generation resulted in 0 slices. Adjust parameters (e.g., reduce initial window, horizon, or skip).")))
 
       all_cv_metrics <- list()
 
-      shiny::withProgress(message = 'Running Cross-Validation...', value = 0, {
+      shiny::withProgress(message = i18n$t("Running Cross-Validation..."), value = 0, {
         n_total_iterations <- length(selected_cv_models) * nrow(ts_cv_splits)
         progress_counter <- 0
 
@@ -129,7 +129,7 @@ mod_validation_server <- function(id, reactive_run_models_summary, reactive_trai
           for (i in 1:nrow(ts_cv_splits)) {
             progress_counter <- progress_counter + 1
             shiny::setProgress(value = progress_counter / n_total_iterations,
-                               detail = paste("Model:", model_name_cv, "- Slice", i, "of", nrow(ts_cv_splits)))
+                               detail = sprintf(i18n$t("Model: %s - Slice %d of %d"), model_name_cv, i, nrow(ts_cv_splits)))
 
             slice <- ts_cv_splits[i, ]
             train_slice <- rsample::training(slice)
@@ -303,17 +303,17 @@ mod_validation_server <- function(id, reactive_run_models_summary, reactive_trai
           tidyr::pivot_wider(names_from = .metric, values_from = .estimate)
 
         cv_results_data_rv(cv_summary_table)
-        shiny::showNotification("Cross-validation complete.", type = "message")
+        shiny::showNotification(i18n$t("Cross-validation complete."), type = "message")
       } else {
         cv_results_data_rv(NULL)
         cv_raw_metrics_list_rv(NULL)
-        shiny::showNotification("Cross-validation ran but no metrics were calculated.", type = "warning")
+        shiny::showNotification(i18n$t("Cross-validation ran but no metrics were calculated."), type = "warning")
       }
     })
 
     output$cv_results_table_output <- DT::renderDataTable({
       req(cv_results_data_rv())
-      DT::datatable(cv_results_data_rv(), options = list(pageLength = 5, scrollX = TRUE), caption = "Mean Cross-Validation Metrics")
+      DT::datatable(cv_results_data_rv(), options = list(pageLength = 5, scrollX = TRUE), caption = i18n$t("Mean Cross-Validation Metrics"))
     })
 
     output$cv_results_plot_output <- renderPlot({
@@ -323,7 +323,7 @@ mod_validation_server <- function(id, reactive_run_models_summary, reactive_trai
       ggplot2::ggplot(final_cv_metrics_df_plot, ggplot2::aes(x = Model, y = .estimate, fill = Model)) +
         ggplot2::geom_boxplot(alpha = 0.7) +
         ggplot2::facet_wrap(~ .metric, scales = "free_y") +
-        ggplot2::labs(title = "Distribution of CV Metrics Across Folds", x = "Model", y = "Metric Value") +
+        ggplot2::labs(title = i18n$t("Distribution of CV Metrics Across Folds"), x = i18n$t("Model"), y = i18n$t("Metric Value")) +
         ggplot2::theme_minimal() +
         ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
     })

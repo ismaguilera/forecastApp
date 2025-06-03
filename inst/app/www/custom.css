@@ -1,0 +1,60 @@
+/* Basic responsive typography */
+body {
+    font-size: 16px; /* Base font size */
+}
+
+@media (max-width: 768px) {
+    body {
+        font-size: 14px; /* Smaller font for tablets */
+    }
+    /* Adjust navbar title or other elements if they wrap badly */
+    .navbar-brand {
+        font-size: 1.1rem;
+    }
+}
+
+@media (max-width: 576px) {
+    body {
+        font-size: 13px; /* Even smaller font for mobile phones */
+    }
+    /* Example: Stack sidebar elements more effectively if needed */
+    .bslib-sidebar-layout > .sidebar {
+        /* Add specific rules if default stacking isn't ideal */
+    }
+    /* Ensure plots and tables are scrollable or scale down */
+    .plotly, .dataTables_wrapper {
+        overflow-x: auto; /* Allow horizontal scrolling if content is too wide */
+    }
+}
+
+/* Make iframes (like plotly plots) responsive */
+iframe {
+    max-width: 100%;
+    height: auto;
+}
+
+/* Ensure images are responsive */
+img {
+    max-width: 100%;
+    height: auto;
+}
+
+/* Class to hide elements on small screens */
+.hide-on-small {
+    display: inherit; /* Default display type */
+}
+@media (max-width: 768px) {
+    .hide-on-small {
+        display: none !important; /* Hide on small screens */
+    }
+}
+
+/* Class to hide elements on large screens */
+.hide-on-large {
+    display: none; /* Default to hidden */
+}
+@media (min-width: 769px) { /* Screens larger than 768px */
+    .hide-on-large {
+        display: inherit !important; /* Show on large screens */
+    }
+}

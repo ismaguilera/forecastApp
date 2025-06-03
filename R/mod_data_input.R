@@ -4,36 +4,43 @@
 #' @description A shiny Module for handling data file input.
 #' @param id,input,output,session Internal parameters for {shiny}.
 #' @noRd
-#' @importFrom shiny NS tagList fileInput selectInput actionButton
+#' @importFrom shiny NS tagList fileInput selectInput actionButton tooltip
 #' @importFrom DT DTOutput
+#' @import shinycssloaders
 mod_data_input_ui <- function(id){
   ns <- NS(id)
   tagList(
-    # fileInput(ns("fileUpload"), "Choose CSV or Excel File",
-    fileInput(ns("fileUpload"), textOutput("ui_csv_file_upload", inline = TRUE),
-              multiple = FALSE,
-              accept = c(".csv",
-                         ".xlsx",
-                         "text/csv",
-                         "text/comma-separated-values,text/plain",
-                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                         "application/vnd.ms-excel")),
+    shiny::tooltip(
+      fileInput(ns("fileUpload"), textOutput("ui_csv_file_upload", inline = TRUE),
+                multiple = FALSE,
+                accept = c(".csv",
+                           ".xlsx",
+                           "text/csv",
+                           "text/comma-separated-values,text/plain",
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           "application/vnd.ms-excel")),
+      title = i18n$t("Upload a CSV or XLSX file. Ensure it has a date column and a numeric value column for forecasting."),
+      placement = "right"
+    ),
     # Wrap selectors in a conditional panel or disable initially - let's disable
     selectInput(ns("defaultDataSelect"), textOutput("ui_choose_default_dataset", inline = TRUE), choices = NULL), # Added selectInput
     actionButton(ns("loadDefault"), textOutput("ui_load_default_dataset", inline = TRUE), icon = icon("table"), class="btn-sm"), # Modified button text
     hr(), # Add separator
-    # selectInput(ns("dateCol"), "Select Date Column", choices = NULL),
-    # selectInput(ns("valueCol"), "Select Value Column", choices = NULL),
-    # DT::DTOutput(ns("dataPreview"))
     tabsetPanel(
       id = ns("modelTabs"),
       type = "tabs",
-
-      # --- ARIMA Tab ---
       tabPanel(textOutput("ui_select_columns"),
                br(),
-               selectInput(ns("dateCol"),  textOutput("ui_select_date_col", inline = TRUE), choices = NULL),
-               selectInput(ns("valueCol"), textOutput("ui_select_value_col", inline = TRUE), choices = NULL)
+               shiny::tooltip(
+                 selectInput(ns("dateCol"),  textOutput("ui_select_date_col", inline = TRUE), choices = NULL),
+                 title = i18n$t("Select the column containing the dates for the time series."),
+                 placement = "right"
+               ),
+               shiny::tooltip(
+                 selectInput(ns("valueCol"), textOutput("ui_select_value_col", inline = TRUE), choices = NULL),
+                 title = i18n$t("Select the numeric column you want to forecast."),
+                 placement = "right"
+               )
       ),
       # tabPanel("Select Columns",
       #          br(),
@@ -43,7 +50,7 @@ mod_data_input_ui <- function(id){
       # tabPanel("Preview",
       tabPanel(textOutput("ui_preview", inline = TRUE),
                br(),
-               DT::DTOutput(ns("dataPreview"))
+               shinycssloaders::withSpinner(DT::DTOutput(ns("dataPreview")))
       )
     )
   )
@@ -68,6 +75,7 @@ mod_data_input_ui <- function(id){
 #' @importFrom utils read.csv head
 #' @importFrom magrittr %>%
 #' @importFrom DT renderDT datatable DTOutput
+#' @importFrom shinyjs disable enable
 mod_data_input_server <- function(id){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
@@ -95,6 +103,11 @@ mod_data_input_server <- function(id){
     # --- Observer for File Upload ---
     observeEvent(input$fileUpload, {
       req(input$fileUpload)
+      shinyjs::disable("fileUpload")
+      shinyjs::disable("defaultDataSelect")
+      shinyjs::disable("loadDefault")
+      shinyjs::disable("dateCol")
+      shinyjs::disable("valueCol")
       message("File upload triggered.") # Debug message
 
       trigger <- input$fileUpload
@@ -108,35 +121,51 @@ mod_data_input_server <- function(id){
           message("Reading Excel file from upload.") # Debug message
           readxl::read_excel(trigger$datapath)
         } else {
-          stop("Unsupported file type. Please upload a .csv or .xlsx file.")
+          stop(i18n$t("Unsupported file type. Please upload a .csv or .xlsx file."))
         }
       }, error = function(e) {
         shiny::showNotification(
-          paste("Error reading uploaded file:", e$message),
+          paste(i18n$t("Error reading uploaded file:"), e$message),
           type = "error",
           duration = 10
         )
         message(paste("Error reading uploaded file:", e$message)) # Debug message
+        shinyjs::enable("fileUpload")
+        shinyjs::enable("defaultDataSelect")
+        shinyjs::enable("loadDefault")
+        shinyjs::enable("dateCol")
+        shinyjs::enable("valueCol")
         return(NULL)
       })
 
       if (!is.null(df)) {
-        shiny::showNotification("File uploaded successfully!", type = "message", duration = 5)
+        shiny::showNotification(i18n$t("File uploaded successfully!"), type = "message", duration = 5)
         message(paste("Successfully read uploaded file. Dimensions:", nrow(df), "rows,", ncol(df), "columns.")) # Debug message
         reactive_df_data(df) # Update the reactiveVal with the dataframe
       } else {
         reactive_df_data(NULL) # Set to NULL if reading failed
       }
+      shinyjs::enable("fileUpload")
+      shinyjs::enable("defaultDataSelect")
+      shinyjs::enable("loadDefault")
+      shinyjs::enable("dateCol")
+      shinyjs::enable("valueCol")
     })
 
     # --- Observer for Load Default Button ---
     observeEvent(input$loadDefault, {
+      req(input$defaultDataSelect) # Ensure a selection is made before disabling
+      shinyjs::disable("fileUpload")
+      shinyjs::disable("defaultDataSelect")
+      shinyjs::disable("loadDefault")
+      shinyjs::disable("dateCol")
+      shinyjs::disable("valueCol")
       message("Load default button triggered.") # Debug message
       selected_file_name <- input$defaultDataSelect
 
       # Validate that a file is selected
       validate(
-        need(!is.null(selected_file_name) && selected_file_name != "", "Please select a default dataset to load.")
+        need(!is.null(selected_file_name) && selected_file_name != "", i18n$t("Please select a default dataset to load."))
       )
       message(paste("Selected default file:", selected_file_name)) # Debug message
 
@@ -152,21 +181,31 @@ mod_data_input_server <- function(id){
         utils::read.csv(default_file_path, stringsAsFactors = FALSE)
       }, error = function(e) {
         shiny::showNotification(
-          paste("Error reading selected default file:", e$message),
+          paste(i18n$t("Error reading selected default file:"), e$message),
           type = "error",
           duration = 10
         )
         message(paste("Error reading selected default file:", e$message)) # Debug message
+        shinyjs::enable("fileUpload")
+        shinyjs::enable("defaultDataSelect")
+        shinyjs::enable("loadDefault")
+        shinyjs::enable("dateCol")
+        shinyjs::enable("valueCol")
         return(NULL)
       })
 
       if (!is.null(df)) {
-        shiny::showNotification("Selected default dataset loaded successfully!", type = "message", duration = 5)
+        shiny::showNotification(i18n$t("Selected default dataset loaded successfully!"), type = "message", duration = 5)
         message(paste("Successfully read selected default file. Dimensions:", nrow(df), "rows,", ncol(df), "columns.")) # Debug message
         reactive_df_data(df) # Update the reactiveVal with the dataframe
       } else {
         reactive_df_data(NULL) # Set to NULL if reading failed
       }
+      shinyjs::enable("fileUpload")
+      shinyjs::enable("defaultDataSelect")
+      shinyjs::enable("loadDefault")
+      shinyjs::enable("dateCol")
+      shinyjs::enable("valueCol")
     })
 
     # --- Observer to update column selectors when data changes ---

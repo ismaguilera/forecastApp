@@ -6,6 +6,7 @@
 #' @import shiny.i18n
 #' @import rintrojs
 #' @import bslib
+#' @import shinycssloaders
 #' @noRd
 
 i18n <- Translator$new(translation_json_path = app_sys("i18n",'translation.json'))
@@ -62,11 +63,11 @@ app_ui <- function(request) {
           bslib::accordion(
             open = c("Preprocessing & Split","Time Series Decomposition"),
             bslib::accordion_panel(
-              title = "Preprocessing & Split", # Title for accordion panel
+              title = textOutput("ui_accordion_preprocess_split_title", inline = TRUE), # Title for accordion panel
               mod_preprocess_controls_ui("preprocess_controls_1")
             ),
             bslib::accordion_panel(
-              title = "Time Series Decomposition", # Title for accordion panel
+              title = textOutput("ui_accordion_time_series_decomposition_title", inline = TRUE), # Title for accordion panel
               full_screen = TRUE, # Added full_screen here
               mod_decomposition_plot_ui("decomposition_plot_1")
             )
@@ -124,7 +125,7 @@ app_ui <- function(request) {
         # Internal layout for this panel
         bslib::layout_sidebar(
           sidebar = bslib::sidebar(
-            title = "Model summary",
+            title = textOutput("ui_sidebar_model_summary_title", inline = TRUE),
             width = 350,
             # Placeholder for Model Summary Module UI
             # tags$p("Placeholder for text summary of the run model (e.g., mod_model_summary_ui)"),
@@ -137,26 +138,20 @@ app_ui <- function(request) {
               div(style = "display: flex; justify-content: flex-end; align-items: center;", # Align button right & vertically center
                   downloadButton(
                     outputId = "downloadForecastData",
-                    label = "Download Forecasts (CSV)",
+                    label = textOutput("ui_download_forecasts_csv_label", inline = TRUE),
                     icon = shiny::icon("download"),
                     class = "btn-success" # Optional styling
                   ),
                   # Spacing
                   tags$span(style="margin-left: 20px;"),
                   # Report Format Radio Buttons
-                  radioButtons(
-                    inputId = "reportFormat", # Use inputId for direct use in app_ui
-                    label = NULL, # Keep it compact
-                    choices = list("HTML" = "html", "PDF" = "pdf"),
-                    selected = "html",
-                    inline = TRUE
-                  ),
+                  uiOutput("report_format_choices_ui"),
                   # Spacing
                   tags$span(style="margin-left: 10px;"),
                   # New Download Report Button
                   downloadButton(
                     outputId = "downloadReport",
-                    label = "Download Report",
+                    label = textOutput("ui_download_report_label", inline = TRUE),
                     icon = shiny::icon("file-alt"),
                     class = "btn-info"
                   )
@@ -164,15 +159,15 @@ app_ui <- function(request) {
             )
           ),
           bslib::navset_card_underline(
-            title = "Visualizations",
+            title = textOutput("ui_visualizations_title", inline = TRUE),
             # Panel with plot ----
-            bslib::nav_panel("Plot", h1="Forecast plot", mod_results_plot_ui("results_plot_1"), full_screen = TRUE),
+            bslib::nav_panel(textOutput("ui_nav_plot_title", inline = TRUE), h1(textOutput("ui_forecast_plot_header", inline = TRUE)), shinycssloaders::withSpinner(mod_results_plot_ui("results_plot_1")), full_screen = TRUE),
 
             # Panel with summary ----
-            bslib::nav_panel("Performance", h1="Model performance metrics", mod_results_table_ui("results_table_1"), full_screen = TRUE),
+            bslib::nav_panel(textOutput("ui_nav_performance_title", inline = TRUE), h1(textOutput("ui_model_performance_metrics_header", inline = TRUE)), shinycssloaders::withSpinner(mod_results_table_ui("results_table_1")), full_screen = TRUE),
 
             # Panel with table ----
-            bslib::nav_panel("Extra Plots", h1="Additional plots", mod_extra_plots_ui("extra_plots_1"), full_screen = TRUE)
+            bslib::nav_panel(textOutput("ui_nav_extra_plots_title", inline = TRUE), h1(textOutput("ui_additional_plots_header", inline = TRUE)), shinycssloaders::withSpinner(mod_extra_plots_ui("extra_plots_1")), full_screen = TRUE)
           )
 
           # bslib::card(
@@ -225,29 +220,29 @@ app_ui <- function(request) {
         # Internal layout for this panel
         bslib::layout_sidebar(
           sidebar = bslib::sidebar(
-            title = "About the app",
+            title = textOutput("ui_sidebar_about_app_title", inline = TRUE),
             width = 350,
             # Placeholder for Validation Configuration?
-            tags$p("This application allows forecasting of vaccine doses using multiple time series models."),
+            uiOutput("ui_about_app_description_p1_ui_placeholder"), # Placeholder for the first paragraph
           ), # End sidebar
 
           bslib::card(
             full_screen = TRUE, # Added full_screen here
-            bslib::card_header(tags$strong("Vaccine Forecasting Application:")),
+            bslib::card_header(tags$strong(textOutput("ui_about_app_card_header", inline = TRUE))),
             bslib::card_body(
               # Placeholder for validation outputs
-              tags$p(tags$strong("Features:"),
-                     tags$ul(tags$li("Loading data from CSV/Excel files,"),
-                             tags$li("Configuration of multiple models (ARIMA, Prophet, XGBoost),"),
-                             tags$li("Switching between daily and weekly time series,"),
-                             tags$li("Interactive visualization of results,"),
-                             tags$li("Validation of forecasts with real data."))),
-              tags$p(tags$strong("Developed with:"), "R and Shiny."),
-              tags$p(tags$strong("Packages:"), tags$code("bslib, shiny, golem, dplyr, lubridate, plotly, forecast, prophet, xgboost, recipes, yardstick, readxl, DT, rintrojs, tidyr, tibble, slider, timetk, etc."))
+              tags$p(tags$strong(textOutput("ui_about_app_features_title", inline = TRUE)),
+                     tags$ul(tags$li(i18n$t("Loading data from CSV/Excel files,")),
+                             tags$li(i18n$t("Configuration of multiple models (ARIMA, Prophet, XGBoost),")),
+                             tags$li(i18n$t("Switching between daily and weekly time series,")),
+                             tags$li(i18n$t("Interactive visualization of results,")),
+                             tags$li(i18n$t("Validation of forecasts with real data.")))),
+              tags$p(tags$strong(textOutput("ui_about_app_developed_with_title", inline = TRUE)), textOutput("ui_about_app_developed_with_text", inline = TRUE)),
+              tags$p(tags$strong(textOutput("ui_about_app_packages_title", inline = TRUE)), tags$code("bslib, shiny, golem, dplyr, lubridate, plotly, forecast, prophet, xgboost, recipes, yardstick, readxl, DT, rintrojs, tidyr, tibble, slider, timetk, etc."))
             ),
             footer =bslib::card_footer(
               class = "fs-6",
-              "Copyright 2025 DESAL, MINSAL"
+              textOutput("ui_about_app_copyright_footer1", inline = TRUE)
             )
           )
         ) # End layout_sidebar for Validation panel
@@ -261,14 +256,14 @@ app_ui <- function(request) {
                            width = "120px") # Adjust width as needed
       ),
       bslib::nav_item(
-        actionButton("save_session_button", "Save Session", icon = icon("save"), class = "btn-primary btn-sm")
+        actionButton("save_session_button", label = textOutput("ui_save_session_button_label", inline = TRUE), icon = icon("save"), class = "btn-primary btn-sm")
       ),
       bslib::nav_item(
-        actionButton("load_session_button", "Load Session", icon = icon("folder-open"), class = "btn-info btn-sm")
+        actionButton("load_session_button", label = textOutput("ui_load_session_button_label", inline = TRUE), icon = icon("folder-open"), class = "btn-info btn-sm")
       ),
       footer =bslib::card_footer(
         class = "fs-6",
-        "Copyright 2025 DESAL, MINSAL. Versión 1.0"
+        textOutput("ui_main_footer_copyright", inline = TRUE)
       )
       # footer =bslib::card(
       #   bslib::card_header(tags$strong(tagList(shiny::icon("circle-info"), " About the app:"))),
@@ -312,9 +307,9 @@ golem_add_external_resources <- function() {
     bundle_resources( # Bundles resources from the specified path
       path = app_sys("app/www"),
       app_title = "forecastApp" # Title for the app
-    )
+    ),
     # Add other external resources here if needed, e.g.:
-    # tags$link(rel="stylesheet", type="text/css", href="www/custom.css")
+    tags$link(rel="stylesheet", type="text/css", href="custom.css")
     # shinyalert::useShinyalert() # If using shinyalert
   )
 }

@@ -4,12 +4,12 @@
 #' @description Module UI for displaying time series decomposition plot.
 #' @param id,input,output,session Internal parameters for {shiny}.
 #' @noRd
-#' @import shiny plotly
+#' @import shiny plotly shinycssloaders
 mod_decomposition_plot_ui <- function(id){
   ns <- NS(id)
   tagList(
     # Maybe add options later (e.g., choose decomposition method?)
-    plotly::plotlyOutput(ns("decompPlot"), height = "500px")
+    shinycssloaders::withSpinner(plotly::plotlyOutput(ns("decompPlot"), height = "500px"))
   )
 }
 
@@ -31,8 +31,8 @@ mod_decomposition_plot_server <- function(id, reactive_aggregated_df, reactive_a
 
       req(agg_data, agg_level) # Ensure inputs are available
       validate(
-        need(nrow(agg_data) > 1, "Need at least 2 data points for decomposition plot."),
-        need(all(c("ds", "y") %in% names(agg_data)), "Aggregated data needs 'ds' and 'y' columns.")
+        need(nrow(agg_data) > 1, message = i18n$t("Need at least 2 data points for decomposition plot.")),
+        need(all(c("ds", "y") %in% names(agg_data)), message = i18n$t("Aggregated data needs 'ds' and 'y' columns."))
       )
 
       # Determine frequency
@@ -40,8 +40,8 @@ mod_decomposition_plot_server <- function(id, reactive_aggregated_df, reactive_a
 
       # Check if enough data for STL
       validate(
-        need(freq > 1, "Decomposition requires seasonal data (frequency > 1)."),
-        need(nrow(agg_data) >= 2 * freq, paste0("Need at least 2 full seasonal cycles (", 2*freq, " points) for STL decomposition."))
+        need(freq > 1, message = i18n$t("Decomposition requires seasonal data (frequency > 1).")),
+        need(nrow(agg_data) >= 2 * freq, message = sprintf(i18n$t("Need at least 2 full seasonal cycles (%d points) for STL decomposition."), 2*freq))
       )
 
       message("Attempting STL decomposition for plot...")
@@ -91,28 +91,28 @@ mod_decomposition_plot_server <- function(id, reactive_aggregated_df, reactive_a
       p_data <- plot_ly(data = decomp_data %>% dplyr::filter(Component=="Data"),
                         x = ~ds, y = ~Value, type='scatter', mode='lines', name="Data",
                         line=list(color='grey')) %>%
-        layout(yaxis = list(title="Data"))
+        layout(yaxis = list(title=i18n$t("Data (Decomp)")))
 
       p_seasonal <- plot_ly(data = decomp_data %>% dplyr::filter(Component=="Seasonal"),
                             x = ~ds, y = ~Value, type='scatter', mode='lines', name="Seasonal",
                             line=list(color='#ff7f0e')) %>% # Orange
-        layout(yaxis = list(title="Seasonal"))
+        layout(yaxis = list(title=i18n$t("Seasonal (Decomp)")))
 
       p_trend <- plot_ly(data = decomp_data %>% dplyr::filter(Component=="Trend"),
                          x = ~ds, y = ~Value, type='scatter', mode='lines', name="Trend",
                          line=list(color='#2ca02c')) %>% # Green
-        layout(yaxis = list(title="Trend"))
+        layout(yaxis = list(title=i18n$t("Trend (Decomp)")))
 
       p_remainder <- plot_ly(data = decomp_data %>% dplyr::filter(Component=="Remainder"),
                              x = ~ds, y = ~Value, type='scatter', mode='lines', name="Remainder",
                              line=list(color='#d62728')) %>% # Red
-        layout(yaxis = list(title="Remainder"), xaxis = list(title="Date")) # Add x title only to bottom plot
+        layout(yaxis = list(title=i18n$t("Remainder (Decomp)")), xaxis = list(title=i18n$t("Date"))) # Add x title only to bottom plot
 
       # Combine decomposition plots
       subplot(p_data, p_seasonal, p_trend, p_remainder,
               nrows = 4, shareX = TRUE, titleY = TRUE,
               heights = c(0.4, 0.2, 0.2, 0.2)) %>% # Adjust relative heights
-        layout(title = "Time Series Decomposition (STL)",
+        layout(title = i18n$t("Time Series Decomposition (STL)"),
                showlegend = FALSE) # Hide individual legends
 
     }) # End renderPlotly

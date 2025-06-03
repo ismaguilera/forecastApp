@@ -13,7 +13,7 @@
 mod_results_plot_ui <- function(id){
   ns <- NS(id)
   tagList(
-    h3("Forecast Plot"), # Heading for the plot section
+    h3(textOutput(ns("ui_results_plot_title_h3_label"), inline = TRUE)), # Heading for the plot section
     plotly::plotlyOutput(ns("forecastPlot"), height = "500px") # Set a reasonable height
   )
 }
@@ -70,12 +70,12 @@ mod_results_plot_server <- function(id, reactive_train_df, reactive_test_df, rea
       # Base plot
       p <- plot_ly() %>%
         layout(
-          title = "Forecast vs Actuals",
-          yaxis = list(title = "Value"),
-          xaxis = list(title = "Date", rangeslider = list(visible=TRUE)),
+          title = i18n$t("Forecast vs Actuals"),
+          yaxis = list(title = i18n$t("Value")),
+          xaxis = list(title = i18n$t("Date"), rangeslider = list(visible=TRUE)),
           legend = #list(orientation = "h", xanchor = "center", x = 0.5, y = -0.1),
           list(tracegroupgap = 10, #orientation = "h",
-               title=list(text='<b> Models </b>'),
+               title=list(text=paste0('<b> ', i18n$t("Models"), ' </b>')),
                xanchor = "center"#, x = 0.1, y = 0.9
                ),
           hovermode = "x unified"
@@ -83,12 +83,12 @@ mod_results_plot_server <- function(id, reactive_train_df, reactive_test_df, rea
 
       # Add Training Data Trace
       p <- p %>% add_trace(data = train_data, x = ~ds, y = ~y,
-                           type = 'scatter', mode = 'lines', line = list(color = 'black'), name = 'Actual (Train)')
+                           type = 'scatter', mode = 'lines', line = list(color = 'black'), name = i18n$t("Actual (Train)"))
 
       # Add Test Data Trace (if it exists)
       if (nrow(test_data) > 0) {
         p <- p %>% add_trace(data = test_data, x = ~ds, y = ~y, type = 'scatter', mode = 'lines',
-                             line = list(color = 'grey', dash = 'dash'), name = 'Actual (Test)')
+                             line = list(color = 'grey', dash = 'dash'), name = i18n$t("Actual (Test)"))
       }
 
       # --- Loop Through Forecast List ---
@@ -137,7 +137,7 @@ mod_results_plot_server <- function(id, reactive_train_df, reactive_test_df, rea
 
       # Final layout adjustments (legend below)
       p <- p %>% layout(legend = list(tracegroupgap = 10, #orientation = "h",
-                                      title=list(text='<b> Models </b>'),
+                                      title=list(text=paste0('<b> ', i18n$t("Models"), ' </b>')),
                                       xanchor = "center"
                                       #, x = 0.1, y = 0.9
                                       )) # Ensure legend is positioned
@@ -195,7 +195,7 @@ mod_results_plot_server <- function(id, reactive_train_df, reactive_test_df, rea
             marker = list(opacity = 0.001, size = 10), # Effectively invisible but hoverable
             text = ~paste(holiday, "<br>", ds), # Hover text: holiday name and date
             hoverinfo = "text",
-            name = "Holidays", # Name for the legend
+            name = i18n$t("Holidays"), # Name for the legend
             showlegend = TRUE
           )
         }

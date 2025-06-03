@@ -13,7 +13,7 @@
 mod_results_table_ui <- function(id){
   ns <- NS(id)
   tagList(
-    h3("Model Performance Metrics"), # Heading for the table section
+    h3(textOutput(ns("ui_model_performance_metrics_h3"), inline = TRUE)), # Heading for the table section
     DT::DTOutput(ns("metricsTable"))
   )
 }
@@ -52,7 +52,7 @@ mod_results_table_server <- function(id, reactive_metrics_summary){
       req(metrics_data)
       validate(
         need(is.data.frame(metrics_data) && nrow(metrics_data) > 0,
-             "Metrics are not available yet. Run a forecast.")
+             message = i18n$t("Metrics are not available yet. Run a forecast."))
         # Can add more specific column checks if needed
       )
 
@@ -62,6 +62,12 @@ mod_results_table_server <- function(id, reactive_metrics_summary){
           # Ensure standard metric names if needed (yardstick uses .metric, .estimate)
           # Ensure DataSet and Model columns exist from upstream processing
           dplyr::select(Model, DataSet, Metric = .metric, Value = .estimate) %>%
+          # Translate DataSet column
+          dplyr::mutate(DataSet = case_when(
+            DataSet == "Train" ~ i18n$t("Train"),
+            DataSet == "Test" ~ i18n$t("Test"),
+            TRUE ~ DataSet # Fallback if other values exist
+          )) %>%
           tidyr::pivot_wider(
             names_from = Metric,
             values_from = Value
@@ -75,9 +81,9 @@ mod_results_table_server <- function(id, reactive_metrics_summary){
             MAPE = mape
           )
       }, error = function(e){
-        shiny::showNotification("Error formatting metrics table.", type = "warning")
+        shiny::showNotification(i18n$t("Error formatting metrics table."), type = "warning")
         # Return an empty placeholder or the original data to show something
-        return(tibble::tibble(Status = "Error formatting data"))
+        return(tibble::tibble(Status = i18n$t("Error formatting data")))
       })
       return(metrics_formatted)
     })

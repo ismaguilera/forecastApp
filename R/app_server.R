@@ -4,7 +4,7 @@
 #' @param input,output,session Internal parameters for {shiny}. DO NOT REMOVE.
 #' @import shiny dplyr tibble forecast parsnip workflows tune dials rsample yardstick timetk recipes slider
 #' @import shiny.i18n
-#' @importFrom shinyjs reset
+#' @importFrom shinyjs reset disable enable
 #' @importFrom RColorBrewer brewer.pal
 #' @importFrom stats predict 
 #' @importFrom utils head capture.output str packageVersion
@@ -46,15 +46,17 @@ app_server <- function(input, output, session) {
     output$ui_page_title <- renderUI({ i18n$t("Vaccine Forecasting App") })
     output$ui_nav_data <- renderText({ i18n$t("Data")})
     output$ui_sidebar_data<- renderText({ i18n$t("Data Input") })
-    output$ui_accordion_preprocess <- renderText({ i18n$t("Preprocessing & Split") })
+    # output$ui_accordion_preprocess <- renderText({ i18n$t("Preprocessing & Split") }) # Original key
+    output$ui_accordion_preprocess_split_title <- renderText({ i18n$t("Preprocessing & Split") })
+    # output$ui_time_series_decomposition <- renderText({ i18n$t("Time Series Decomposition") }) # Original key
+    output$ui_accordion_time_series_decomposition_title <- renderText({ i18n$t("Time Series Decomposition") })
     output$ui_aggregation_level <- renderText({ i18n$t("Aggregation Level") })
     output$ui_aggregation_level_daily <- renderText({ i18n$t("Daily") })
     output$ui_aggregation_level_weekly <- renderText({ i18n$t("Weekly") })
     output$ui_aggregation_level_weekly_mean <- renderText({ i18n$t("mean") })
     output$ui_aggregation_level_weekly_sum <- renderText({ i18n$t("sum") })
     output$ui_train_set_percentage <- renderText({ i18n$t("Train Set Percentage") })  
-    output$ui_time_series_decomposition <- renderText({ i18n$t("Time Series Decomposition") })  
-    output$ui_model_summary <- renderText({ i18n$t("Model Summary") })
+    output$ui_model_summary <- renderText({ i18n$t("Model Summary") }) # For sidebar title in data panel
     output$ui_csv_file_upload <- renderText({ i18n$t("Choose CSV or Excel File") })
     output$ui_choose_default_dataset <- renderText({ i18n$t("Choose Default Dataset") })
     output$ui_load_default_dataset <- renderText({ i18n$t("Load Selected Default Dataset") })
@@ -65,12 +67,148 @@ app_server <- function(input, output, session) {
     output$ui_load_holidays <- renderText({ i18n$t("Load Holidays (Optional)") })
     output$ui_load_holidays_default <- renderText({ i18n$t("Load Default Holidays") })
     output$ui_upload_global_holidays <- renderText({ i18n$t("Upload Global Holidays File (CSV: ds, holiday)") })
+
     output$ui_nav_model <- renderText({ i18n$t("Model") })
+
     output$ui_nav_forecast_results <- renderText({ i18n$t("Forecast results") })
-    output$ui_visualizations <- renderText({ i18n$t("Visualizations") })
+    output$ui_sidebar_model_summary_title <- renderText({ i18n$t("Model summary") })
+    output$ui_download_forecasts_csv_label <- renderText({ i18n$t("Download Forecasts (CSV)")})
+    output$report_format_choices_ui <- renderUI({
+      radioButtons(
+        inputId = "reportFormat", # ns() not needed here as inputId is directly used in app_ui
+        label = NULL,
+        choices = list(i18n$t("HTML") = "html", i18n$t("PDF") = "pdf"),
+        selected = input$reportFormat %||% "html", # Preserve selection
+        inline = TRUE
+      )
+    })
+    output$ui_download_report_label <- renderText({ i18n$t("Download Report") })
+    output$ui_visualizations_title <- renderText({ i18n$t("Visualizations") }) # For navset_card_underline title
+    output$ui_nav_plot_title <- renderText({ i18n$t("Plot") })
+    output$ui_forecast_plot_header <- renderText({ i18n$t("Forecast plot") })
+    output$ui_nav_performance_title <- renderText({ i18n$t("Performance") })
+    output$ui_model_performance_metrics_header <- renderText({ i18n$t("Model performance metrics") })
+    output$ui_nav_extra_plots_title <- renderText({ i18n$t("Extra Plots") })
+    output$ui_additional_plots_header <- renderText({ i18n$t("Additional plots") })
+
     output$ui_nav_validation <- renderText({ i18n$t("Validation") })
+
     output$ui_nav_about <- renderText({  i18n$t("About") })
+    output$ui_sidebar_about_app_title <- renderText({ i18n$t("About the app") })
+    output$ui_about_app_description_p1_ui <- renderUI({ tags$p(i18n$t("This application allows forecasting of vaccine doses using multiple time series models.")) })
+    # For the placeholder ID used in the patch:
+    output$ui_about_app_description_p1_ui_placeholder <- renderUI({ tags$p(i18n$t("This application allows forecasting of vaccine doses using multiple time series models.")) })
+    output$ui_about_app_card_header <- renderText({ i18n$t("Vaccine Forecasting Application:") })
+    output$ui_about_app_features_title <- renderText({ i18n$t("Features:") })
+    output$ui_about_app_developed_with_title <- renderText({ i18n$t("Developed with:") })
+    output$ui_about_app_developed_with_text <- renderText({ i18n$t("R and Shiny.") })
+    output$ui_about_app_packages_title <- renderText({ i18n$t("Packages:") })
+    output$ui_about_app_copyright_footer1 <- renderText({ i18n$t("Copyright 2025 DESAL, MINSAL") })
+
+    output$ui_save_session_button_label <- renderText({ i18n$t("Save Session") })
+    output$ui_load_session_button_label <- renderText({ i18n$t("Load Session") })
+    output$ui_main_footer_copyright <- renderText({ i18n$t("Copyright 2025 DESAL, MINSAL. Versión 1.0") })
+
+    # For R/mod_model_config_ui.R
+    output[['model_config_1-ui_model_config_title_h4_label']] <- renderText({ i18n$t("Model Configuration") })
+    output[['model_config_1-ui_select_models_to_run_label']] <- renderText({ i18n$t("Select Models to Run:") })
+    output[['model_config_1-ui_arima_label']] <- renderText({ i18n$t("ARIMA") })
+    output[['model_config_1-ui_ets_label']] <- renderText({ i18n$t("ETS") })
+    output[['model_config_1-ui_tbats_label']] <- renderText({ i18n$t("TBATS") })
+    output[['model_config_1-ui_prophet_label']] <- renderText({ i18n$t("Prophet") })
+    output[['model_config_1-ui_xgboost_label']] <- renderText({ i18n$t("XGBoost") })
+    output[['model_config_1-ui_gam_label']] <- renderText({ i18n$t("GAM") })
+    output[['model_config_1-ui_random_forest_label']] <- renderText({ i18n$t("Random Forest") })
+    output[['model_config_1-ui_nnetar_label']] <- renderText({ i18n$t("NNETAR") })
+    output[['model_config_1-ui_forecast_horizon_label']] <- renderText({ i18n$t("Forecast Horizon (Periods):") })
+    output[['model_config_1-ui_run_forecast_label']] <- renderText({ i18n$t("Run Forecast") })
+    output[['model_config_1-ui_configure_model_parameters_label']] <- renderText({ i18n$t("Configure Model Parameters:") })
+    output[['model_config_1-ui_arima_parameters_title']] <- renderText({ i18n$t("ARIMA Parameters") })
+    output[['model_config_1-ui_ets_parameters_title']] <- renderText({ i18n$t("ETS Parameters") })
+    output[['model_config_1-ui_tbats_parameters_title']] <- renderText({ i18n$t("TBATS Parameters") })
+    output[['model_config_1-ui_prophet_parameters_title']] <- renderText({ i18n$t("Prophet Parameters") })
+    output[['model_config_1-ui_xgboost_parameters_title']] <- renderText({ i18n$t("XGBoost Parameters") })
+    output[['model_config_1-ui_random_forest_parameters_title']] <- renderText({ i18n$t("Random Forest Parameters") })
+    output[['model_config_1-ui_gam_parameters_title']] <- renderText({ i18n$t("GAM Parameters") })
+    output[['model_config_1-ui_nnetar_parameters_title']] <- renderText({ i18n$t("NNETAR Parameters") })
+
+    output[['model_config_1-ui_auto_arima_label']] <- renderText({ i18n$t("Auto ARIMA (auto.arima)") })
+    output[['model_config_1-ui_order_p_ar_label']] <- renderText({ i18n$t("Order p (AR):") })
+    output[['model_config_1-ui_order_d_diff_label']] <- renderText({ i18n$t("Order d (Diff):") })
+    output[['model_config_1-ui_order_q_ma_label']] <- renderText({ i18n$t("Order q (MA):") })
+    output[['model_config_1-ui_seasonal_arima_label']] <- renderText({ i18n$t("Seasonal ARIMA") })
+    output[['model_config_1-ui_seasonal_p_sar_label']] <- renderText({ i18n$t("Seasonal P (SAR):") })
+    output[['model_config_1-ui_seasonal_d_sdiff_label']] <- renderText({ i18n$t("Seasonal D (SDiff):") })
+    output[['model_config_1-ui_seasonal_q_sma_label']] <- renderText({ i18n$t("Seasonal Q (SMA):") })
+    output[['model_config_1-ui_seasonal_period_label']] <- renderText({ i18n$t("Seasonal Period (e.g., 7 for daily/weekly, 52 for weekly/yearly):") })
+
+    output[['model_config_1-ui_manual_ets_configuration_label']] <- renderText({ i18n$t("Manual ETS Configuration") })
+    output[['model_config_1-ui_error_component_e_label']] <- renderText({ i18n$t("Error Component (E):") })
+    output[['model_config_1-ui_trend_component_t_label']] <- renderText({ i18n$t("Trend Component (T):") })
+    output[['model_config_1-ui_seasonal_component_s_label']] <- renderText({ i18n$t("Seasonal Component (S):") })
+    output[['model_config_1-ui_damped_trend_label']] <- renderText({ i18n$t("Damped Trend:") })
+
+    output[['model_config_1-ui_yearly_seasonality_label']] <- renderText({ i18n$t("Yearly Seasonality") })
+    output[['model_config_1-ui_weekly_seasonality_label']] <- renderText({ i18n$t("Weekly Seasonality") })
+    output[['model_config_1-ui_daily_seasonality_label']] <- renderText({ i18n$t("Daily Seasonality (for daily data)") })
+    output[['model_config_1-ui_growth_model_label']] <- renderText({ i18n$t("Growth Model:") })
+    output[['model_config_1-ui_capacity_cap_label']] <- renderText({ i18n$t("Capacity (Cap for Logistic Growth):") })
+    output[['model_config_1-ui_changepoint_prior_scale_label']] <- renderText({ i18n$t("Changepoint Prior Scale:") })
+    output[['model_config_1-ui_upload_external_regressors_label']] <- renderText({ i18n$t("Upload External Regressors CSV (optional, cols: ds, regressor1, ...)") })
+
+    output[['model_config_1-ui_enable_hyperparameter_tuning_label']] <- renderText({ i18n$t("Enable Hyperparameter Tuning") }) # For XGB
+    output[['model_config_1-ui_number_of_rounds_trees_label']] <- renderText({ i18n$t("Number of Rounds (Trees):") })
+    output[['model_config_1-ui_learning_rate_eta_label']] <- renderText({ i18n$t("Learning Rate (eta):") })
+    output[['model_config_1-ui_max_tree_depth_label']] <- renderText({ i18n$t("Max Tree Depth:") })
+    output[['model_config_1-ui_subsample_ratio_label']] <- renderText({ i18n$t("Subsample Ratio of Training Instances:") })
+    output[['model_config_1-ui_column_sample_ratio_label']] <- renderText({ i18n$t("Column Sample Ratio per Tree:") })
+    output[['model_config_1-ui_min_split_loss_gamma_label']] <- renderText({ i18n$t("Min Split Loss (gamma):") })
+
+    output[['model_config_1-ui_rf_enable_hyperparameter_tuning_label']] <- renderText({ i18n$t("Enable Hyperparameter Tuning") }) # For RF
+    output[['model_config_1-ui_number_of_trees_label']] <- renderText({ i18n$t("Number of Trees:") })
+    output[['model_config_1-ui_variables_per_split_mtry_label']] <- renderText({ i18n$t("Variables per Split (mtry, 0 for auto if tuning off):") })
+    output[['model_config_1-ui_min_node_size_label']] <- renderText({ i18n$t("Min Node Size:") })
     
+    output[['model_config_1-ui_trend_type_label']] <- renderText({ i18n$t("Trend Type:") })
+    output[['model_config_1-ui_include_yearly_seasonality_label']] <- renderText({ i18n$t("Include Yearly Seasonality (Day of Year)") })
+    output[['model_config_1-ui_include_weekly_seasonality_label']] <- renderText({ i18n$t("Include Weekly Seasonality (Day of Week)") })
+
+    output[['model_config_1-ui_model_structure_label']] <- renderText({ i18n$t("Model Structure:") })
+    output[['model_config_1-ui_non_seasonal_lags_p_label']] <- renderText({ i18n$t("Non-seasonal lags (p) (0 for auto if P=0, or specify e.g., 1, 2)") })
+    output[['model_config_1-ui_seasonal_lags_p_label']] <- renderText({ i18n$t("Seasonal lags (P) (0 for non-seasonal, or specify e.g., 1, 2 for seasonal)") })
+    output[['model_config_1-ui_hidden_layer_neurons_method_label']] <- renderText({ i18n$t("Hidden Layer Neurons (size) - Method") })
+    output[['model_config_1-ui_number_of_hidden_neurons_label']] <- renderText({ i18n$t("Number of Hidden Neurons") })
+    output[['model_config_1-ui_repeats_for_stability_label']] <- renderText({ i18n$t("Repeats (for stability)") })
+    output[['model_config_1-ui_data_preprocessing_label']] <- renderText({ i18n$t("Data Preprocessing:") })
+    output[['model_config_1-ui_box_cox_lambda_auto_label']] <- renderText({ i18n$t("Box-Cox Lambda (Auto select)") })
+    output[['model_config_1-ui_manual_lambda_label']] <- renderText({ i18n$t("Manual Lambda (0-1 for Box-Cox, leave NA/blank for no transform)") })
+
+    # For R/mod_results_plot_ui.R (which is in R/mod_results_plot.R)
+    output[['results_plot_1-ui_results_plot_title_h3_label']] <- renderText({ i18n$t("Forecast Plot") })
+
+    # For R/mod_model_summary_ui.R (which is in R/mod_model_summary.R)
+    output[['model_summary_1-ui_model_summary_title_h4']] <- renderText({ i18n$t("Model Summary") })
+    # The label for selectInput "selected_summary_model" is handled within its own server logic using i18n$t() directly.
+    # No, the plan was to handle it here:
+    output[['model_summary_1-ui_model_summary_select_label_dynamic']] <- renderText({i18n$t("Select Model to View Summary:")})
+
+
+    # For R/mod_results_table_ui.R (which is in R/mod_results_table.R)
+    output[['results_table_1-ui_model_performance_metrics_h3']] <- renderText({ i18n$t("Model performance metrics") })
+
+    # For R/mod_validation_ui.R (which is in R/mod_validation.R)
+    output[['validation_1-ui_validation_nav_panel_title']] <- renderText({ i18n$t("Validation") })
+    output[['validation_1-ui_cv_sidebar_title_label']] <- renderText({ i18n$t("CV Controls") })
+    output[['validation_1-ui_cv_params_h5_title_label']] <- renderText({ i18n$t("Cross-Validation Parameters:") })
+    output[['validation_1-ui_cv_initial_window_label']] <- renderText({ i18n$t("Initial Training Window (periods):") })
+    output[['validation_1-ui_cv_horizon_label']] <- renderText({ i18n$t("Forecast Horizon (periods per fold):") })
+    output[['validation_1-ui_cv_skip_label']] <- renderText({ i18n$t("Skip (periods between folds):") })
+    output[['validation_1-ui_cv_cumulative_label']] <- renderText({ i18n$t("Cumulative Training Window?") })
+    output[['validation_1-ui_cv_run_button_label']] <- renderText({ i18n$t("Run Cross-Validation") })
+    output[['validation_1-ui_cv_results_h4_title_label']] <- renderText({ i18n$t("Cross-Validation Results") })
+    output[['validation_1-ui_cv_card_header_mean_metrics_label']] <- renderText({ i18n$t("Cross-Validation Mean Metrics") })
+    output[['validation_1-ui_cv_card_header_metric_dist_label']] <- renderText({ i18n$t("Cross-Validation Metric Distributions") })
+
   })
 
   # Note: The "Language:" label for selectInput is not translated for now as per plan.
@@ -226,7 +364,7 @@ app_server <- function(input, output, session) {
     # Use session explicitly provided to app_server
     # --- DEBUG: Check if event fires ---
     # print("Start Tour button observed!")
-    showNotification("Tour button clicked! Preparing tour...", type="message", duration = 3)
+    shiny::showNotification(i18n$t("Tour button clicked! Preparing tour..."), type = "message", duration = 3) # Example of translating a notification
     # --- End DEBUG --
     # --- DEBUG: Define simple steps targeting only the main H1 title ---
     simple_steps <- data.frame(
@@ -254,12 +392,12 @@ app_server <- function(input, output, session) {
         dplyr::mutate(ds = lubridate::as_date(ds)) %>%
         dplyr::select(ds, holiday) %>%
         dplyr::filter(!is.na(ds) & !is.na(holiday))
-      req(nrow(df_holidays) > 0, "Processed holiday data is empty. Ensure correct format and non-empty data.")
+      req(nrow(df_holidays) > 0, i18n$t("Processed holiday data is empty. Ensure correct format and non-empty data."))
       r$global_holidays_data(df_holidays)
-      shiny::showNotification("Global holidays file uploaded and processed successfully.", type = "message")
+      shiny::showNotification(i18n$t("Global holidays file uploaded and processed successfully."), type = "message")
     }, error = function(e) {
       r$global_holidays_data(NULL) # Reset on error
-      error_message <- paste("Error processing global holidays file. Please check format (CSV with 'Fecha', 'Feriados_chilenos' columns) and content. Original error:", e$message)
+      error_message <- paste(i18n$t("Error processing global holidays file. Please check format (CSV with 'Fecha', 'Feriados_chilenos' columns) and content. Original error:"), e$message)
       shiny::showNotification(error_message, type = "error", duration = 10)
     })
   })
@@ -280,12 +418,12 @@ app_server <- function(input, output, session) {
         dplyr::mutate(ds = lubridate::as_date(ds)) %>%
         dplyr::select(ds, holiday) %>%
         dplyr::filter(!is.na(ds) & !is.na(holiday))
-      req(nrow(df_holidays) > 0, "Processed default holiday data is empty.")
+      req(nrow(df_holidays) > 0, i18n$t("Processed default holiday data is empty."))
       r$global_holidays_data(df_holidays)
-      shiny::showNotification("Default global holidays loaded successfully.", type = "message")
+      shiny::showNotification(i18n$t("Default global holidays loaded successfully."), type = "message")
     }, error = function(e) {
       r$global_holidays_data(NULL) # Reset on error
-      error_message <- paste("Error loading default global holidays. Please check the file and application configuration. Original error:", e$message)
+      error_message <- paste(i18n$t("Error loading default global holidays. Please check the file and application configuration. Original error:"), e$message)
       shiny::showNotification(error_message, type = "error", duration = 10)
     })
   })
@@ -293,6 +431,45 @@ app_server <- function(input, output, session) {
   # --- Model Execution Logic ---
   observeEvent(model_config_reactives$run_forecast_button(), {
     message("Run Forecast button clicked.")
+
+    # Define input IDs to disable/enable
+    input_ids_to_toggle <- c(
+      "model_config_1-runForecast",
+      "model_config_1-use_arima", "model_config_1-use_ets", "model_config_1-use_tbats",
+      "model_config_1-use_prophet", "model_config_1-use_xgboost", "model_config_1-use_gam",
+      "model_config_1-use_rf", "model_config_1-use_nnetar",
+      "model_config_1-forecastHorizon",
+      # ARIMA
+      "model_config_1-arima_auto", "model_config_1-arima_p", "model_config_1-arima_d", "model_config_1-arima_q",
+      "model_config_1-arima_seasonal", "model_config_1-arima_P", "model_config_1-arima_D", "model_config_1-arima_Q",
+      "model_config_1-arima_period",
+      # ETS
+      "model_config_1-ets_manual", "model_config_1-ets_e", "model_config_1-ets_t", "model_config_1-ets_s",
+      "model_config_1-ets_damped_str",
+      # Prophet
+      "model_config_1-prophet_yearly", "model_config_1-prophet_weekly", "model_config_1-prophet_daily",
+      "model_config_1-prophet_growth", "model_config_1-prophet_capacity", "model_config_1-prophet_changepoint_scale",
+      "model_config_1-prophet_regressors_file", "model_config_1-prophet_holidays_file", # Added holidays file as it was missing
+      # XGBoost
+      "model_config_1-xgb_enable_tuning", "model_config_1-xgb_nrounds", "model_config_1-xgb_eta",
+      "model_config_1-xgb_max_depth", "model_config_1-xgb_subsample", "model_config_1-xgb_colsample",
+      "model_config_1-xgb_gamma",
+      # Random Forest
+      "model_config_1-rf_enable_tuning", "model_config_1-rf_num_trees", "model_config_1-rf_mtry",
+      "model_config_1-rf_min_node_size",
+      # GAM
+      "model_config_1-gam_trend_type", "model_config_1-gam_use_season_y", "model_config_1-gam_use_season_w",
+      # NNETAR
+      "model_config_1-nnetar_p", "model_config_1-nnetar_P", "model_config_1-nnetar_size_method",
+      "model_config_1-nnetar_size_manual", "model_config_1-nnetar_repeats",
+      "model_config_1-nnetar_lambda_auto", "model_config_1-nnetar_lambda_manual"
+    )
+
+    # Disable inputs
+    for (id in input_ids_to_toggle) {
+      shinyjs::disable(id)
+    }
+
     # Get required inputs reactively
     train_df <- preprocess_reactives$reactive_train_df()
     test_df <- preprocess_reactives$reactive_test_df()
@@ -339,12 +516,12 @@ app_server <- function(input, output, session) {
 
     selected_models_now <- names(model_checks)[sapply(model_checks, isTRUE)]
     # selected_models_now <- model_config_reactives$selected_models() # Get selected models
-    validate(need(length(selected_models_now) > 0, "Please select at least one model to run."))
+    validate(need(length(selected_models_now) > 0, i18n$t("Please select at least one model to run.")))
     message(paste("Models selected:", paste(selected_models_now, collapse=", ")))
 
     # Validation
     req(train_df, test_df, full_aggregated_df, agg_level, horizon)
-    validate(need(length(selected_models_now) > 0, "Please select at least one model to run."))
+    validate(need(length(selected_models_now) > 0, i18n$t("Please select at least one model to run."))) # Duplicated validate, but ok for now
     message(paste("Models selected:", paste(selected_models_now, collapse=", ")))
 
     # --- Reset results lists ---
@@ -399,7 +576,7 @@ app_server <- function(input, output, session) {
     # y lo actualizaremos después de entrenar ARIMA.
     arima_xreg_colnames_from_training <- NULL
     # Basic check for enough training data
-    validate(need(nrow(train_df) >= 5, "Need at least 5 training data points.")) # Adjust as needed
+    validate(need(nrow(train_df) >= 5, i18n$t("Need at least 5 training data points."))) # Adjust as needed
 
     # Reset previous results
     # r$forecast_obj <- NULL
@@ -411,16 +588,20 @@ app_server <- function(input, output, session) {
     model_success <- FALSE # Flag
 
 
-    shiny::withProgress(message = 'Running Forecast...', value = 0, {
+    shiny::withProgress(message = i18n$t("Running Forecast..."), value = 0, {
       temp_summary_list <- list() # Temp list to build summaries
       tryCatch({ # Outer tryCatch for overall process
         successful_models <- c() # Keep track of models that ran ok
-        for (i in seq_along(selected_models_now)) {
-          model_name <- selected_models_now[i]
+        # --- ADD finally block for re-enabling inputs ---
+        # The actual work is done in the try block, re-enable in finally
+        try({
+          for (i in seq_along(selected_models_now)) {
+            model_name <- selected_models_now[i]
           message(paste("--- Starting Model:", model_name, "---"))
           current_progress <- (i-1) * progress_inc
           shiny::incProgress(amount = 0, # Update message first
-                             detail = paste("Running", model_name,"(", i, "of", n_models,")"))
+                             detail = paste(i18n$t("Running"), model_name,"(", i, i18n$t("of"), n_models,")"))
+                             detail = paste(i18n$t("Running"), model_name,"(", i, i18n$t("of"), n_models,")"))
 
           forecast_tibble <- NULL # Initialize for this model
           fitted_values <- NULL # Initialize for this model
@@ -1184,9 +1365,9 @@ app_server <- function(input, output, session) {
 
           }, error = function(e){ # Catch error for INDIVIDUAL model
               user_friendly_message <- paste0(
-                "Error during ", model_name, " model processing. ",
-                "Please check this model's configuration and input data suitability. ",
-                "Specific error: ", conditionMessage(e)
+                i18n$t("Error during"), " ", model_name, " ", i18n$t("model processing."), " ",
+                i18n$t("Please check this model's configuration and input data suitability."), " ",
+                i18n$t("Specific error:"), " ", conditionMessage(e)
               )
               warning(paste("Error running model", model_name, ":", conditionMessage(e))) # Keep for server logs
               shiny::showNotification(user_friendly_message, type = "warning", duration = 10)
@@ -1217,13 +1398,22 @@ app_server <- function(input, output, session) {
           # Increment progress bar after each model attempt
           shiny::incProgress(amount = progress_inc)
           if(model_run_success) {
-            shiny::showNotification(paste(model_name, "forecast complete."), type = "message", duration = 5)
+            shiny::showNotification(paste(model_name, i18n$t("forecast complete.")), type = "message", duration = 5)
           } else {
             # Error notification already shown by tryCatch
           }
 
         } # --- End For Loop ---
-      req(length(successful_models) > 0, "All selected models failed to produce forecasts.")
+        }) # --- End of try block for model processing ---
+        finally({
+          # Re-enable inputs
+          for (id in input_ids_to_toggle) {
+            shinyjs::enable(id)
+          }
+          message("All specified inputs re-enabled.")
+        }) # --- End of finally block ---
+
+      req(length(successful_models) > 0, i18n$t("All selected models failed to produce forecasts."))
       message(paste("Models run successfully:", paste(successful_models, collapse=", ")))
       # --- Metrics Calculation (NEW - Loop through successful models) ---
       message("Calculating metrics for successful models...")
@@ -1342,11 +1532,16 @@ app_server <- function(input, output, session) {
         # --- End Metrics ---
       }, error = function(e) { # Outer catch handler for the entire forecast process
         # This catches errors outside individual model loops (e.g., initial data prep, metrics combination if not caught)
+        # Ensure inputs are re-enabled even if outer error occurs BEFORE the finally block of the inner try.
+        # However, the current structure with try/finally inside the main tryCatch should handle most cases.
+        # If an error occurs before the inner try-finally, this outer catch's re-enabling is a safeguard.
+        # For robustness, one might also add the enable loop here, but it could be redundant if the inner finally always runs.
+        # Let's rely on the inner try/finally for enabling, and this outer catch for error reporting.
         detailed_error_msg <- conditionMessage(e)
         user_facing_error_msg <- paste(
-          "An unexpected error occurred during the overall forecast process. ",
-          "Please review your data and general settings. ",
-          "Details: ", detailed_error_msg
+          i18n$t("An unexpected error occurred during the overall forecast process."),
+          i18n$t("Please review your data and general settings."),
+          i18n$t("Details:"), detailed_error_msg
         )
         message(paste("ERROR caught in outer tryCatch for forecast process:", detailed_error_msg)) # Server log
         print("--- Outer tryCatch Error Object (Forecast Process) ---")
@@ -1375,13 +1570,13 @@ app_server <- function(input, output, session) {
 
     output$downloadForecastData <- downloadHandler(
       filename = function() {
-        paste0("forecast_results_", Sys.Date(), ".csv")
+        paste0(i18n$t("forecast_results_"), Sys.Date(), ".csv") # Filename can be translated if needed, but usually not.
       },
       content = function(file) {
         message("Download button triggered.") # Log download start
         # --- Prepare Data for Download ---
         req(r$run_id > 0, r$forecast_list)
-        validate(need(length(r$forecast_list) > 0, "No forecast results generated yet."))
+        validate(need(length(r$forecast_list) > 0, i18n$t("No forecast results generated yet.")))
 
         forecasts_to_download <- r$forecast_list
         processed_list <- list() # Initialize empty list
@@ -1440,12 +1635,12 @@ app_server <- function(input, output, session) {
   # --- Save Session Logic ---
   observeEvent(input$save_session_button, {
     shiny::showModal(modalDialog(
-      title = "Save Session",
-      textInput("session_filename_input", "Enter filename for session (e.g., my_forecast_session):", 
-                value = paste0("forecast_session_", format(Sys.time(), "%Y%m%d_%H%M%S"))),
+      title = i18n$t("Save Session"),
+      textInput("session_filename_input", i18n$t("Enter filename for session (e.g., my_forecast_session):"),
+                value = paste0(i18n$t("forecast_session_"), format(Sys.time(), "%Y%m%d_%H%M%S"))),
       footer = tagList(
-        modalButton("Cancel"),
-        downloadButton("trigger_session_save_download", "Save to RDS")
+        modalButton(i18n$t("Cancel")),
+        downloadButton("trigger_session_save_download", i18n$t("Save to RDS"))
       ),
       easyClose = TRUE
     ))
@@ -1563,15 +1758,15 @@ app_server <- function(input, output, session) {
         global_holidays_file_name = global_holidays_file_name_to_save # Save original filename
       )
       
-      notification_id <- shiny::showNotification("Saving session... Please wait.", duration = NULL, type = "message")
+      notification_id <- shiny::showNotification(i18n$t("Saving session... Please wait."), duration = NULL, type = "message")
       on.exit(shiny::removeNotification(notification_id), add = TRUE)
 
       tryCatch({
         saveRDS(session_state_to_save, file = file)
         shiny::removeModal()
-        shiny::showNotification(paste("Session saved to", basename(file)), type = "message", duration = 5)
+        shiny::showNotification(paste(i18n$t("Session saved to"), basename(file)), type = "message", duration = 5)
       }, error = function(e_save) {
-        shiny::showNotification(paste("Error saving session:", e_save$message), type = "error", duration = 10)
+        shiny::showNotification(paste(i18n$t("Error saving session:"), e_save$message), type = "error", duration = 10)
       })
     },
     contentType = "application/octet-stream"
@@ -1581,13 +1776,13 @@ app_server <- function(input, output, session) {
   # --- Load Session Logic ---
   observeEvent(input$load_session_button, {
     shiny::showModal(modalDialog(
-      title = "Load Session",
-      fileInput("load_session_file_input_modal", "Upload Session File (.rds)",
+      title = i18n$t("Load Session"),
+      fileInput("load_session_file_input_modal", i18n$t("Upload Session File (.rds)"),
                 accept = c(".rds"),
-                placeholder = "No file selected"),
+                placeholder = i18n$t("No file selected")),
       footer = tagList(
-        modalButton("Cancel"),
-        actionButton("confirm_load_session_button", "Load Session")
+        modalButton(i18n$t("Cancel")),
+        actionButton("confirm_load_session_button", i18n$t("Load Session"))
       ),
       easyClose = TRUE
     ))
@@ -1596,7 +1791,7 @@ app_server <- function(input, output, session) {
   observeEvent(input$confirm_load_session_button, {
     req(input$load_session_file_input_modal)
     
-    show_loading_notification <- shiny::showNotification("Loading session... Please wait.", duration = NULL, type = "message", id = "loading_session_notif")
+    show_loading_notification <- shiny::showNotification(i18n$t("Loading session... Please wait."), duration = NULL, type = "message", id = "loading_session_notif")
 
     tryCatch({
       loaded_state <- readRDS(input$load_session_file_input_modal$datapath)
@@ -1729,15 +1924,15 @@ app_server <- function(input, output, session) {
       }
       
       # Construct the notification message
-      data_file_msg <- if (!is.null(r$loaded_session_data_file_name)) paste0("main data file ('", r$loaded_session_data_file_name, "')") else "main data file"
-      holidays_file_msg <- if (!is.null(r$loaded_session_holiday_file_name)) paste0("global holidays file ('", r$loaded_session_holiday_file_name, "')") else "global holidays file"
+      data_file_msg <- if (!is.null(r$loaded_session_data_file_name)) paste0(i18n$t("main data file"), " ('", r$loaded_session_data_file_name, "')") else i18n$t("main data file")
+      holidays_file_msg <- if (!is.null(r$loaded_session_holiday_file_name)) paste0(i18n$t("global holidays file"), " ('", r$loaded_session_holiday_file_name, "')") else i18n$t("global holidays file")
       
       full_notification_msg <- paste0(
-        "Session loaded successfully! Please re-upload your ",
-        data_file_msg, 
-        " and ",
-        holidays_file_msg,
-        " if they were part of the saved session."
+        i18n$t("Session loaded successfully! Please re-upload your")," ",
+        data_file_msg, " ",
+        i18n$t("and"), " ",
+        holidays_file_msg," ",
+        i18n$t("if they were part of the saved session.")
       )
       shiny::showNotification(full_notification_msg, type = "message", duration = 15) # Increased duration
       
@@ -1753,7 +1948,7 @@ app_server <- function(input, output, session) {
     }, error = function(e) {
       shiny::removeNotification(id = "loading_session_notif")
       removeModal() # Also remove modal on error
-      shiny::showNotification(paste("Error loading session:", e$message), type = "error", duration = 10)
+      shiny::showNotification(paste(i18n$t("Error loading session:"), e$message), type = "error", duration = 10)
       # Optionally, reset parts of the state if loading fails catastrophically
       # For example, reset r$run_id if it was partially loaded and might cause issues
       # r$run_id <- 0 
@@ -1776,12 +1971,12 @@ app_server <- function(input, output, session) {
   # --- Report Generation Download Handler ---
   output$downloadReport <- downloadHandler(
     filename = function() {
-      paste0("forecast_report_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".", input$reportFormat)
+      paste0(i18n$t("forecast_report_"), format(Sys.time(), "%Y%m%d_%H%M%S"), ".", input$reportFormat)
     },
     content = function(file) {
-      shiny::withProgress(message = paste("Generating", toupper(input$reportFormat), "report..."), value = 0, {
+      shiny::withProgress(message = paste(i18n$t("Generating"), toupper(input$reportFormat), i18n$t("report...")), value = 0, {
         
-        shiny::incProgress(0.1, detail = "Preparing data...")
+        shiny::incProgress(0.1, detail = i18n$t("Preparing data..."))
         # Ensure all required reactive data is available
         req(
           plot_obj_reactive(), 
@@ -1793,7 +1988,7 @@ app_server <- function(input, output, session) {
         # Generate Model Summaries Text
         model_summaries_for_report <- list()
         if (length(r$run_models_summary) > 0) {
-          shiny::incProgress(0.2, detail = "Formatting model summaries...")
+          shiny::incProgress(0.2, detail = i18n$t("Formatting model summaries..."))
           for (model_name_iter in names(r$run_models_summary)) { # Renamed to avoid conflict
             summary_entry <- r$run_models_summary[[model_name_iter]]
             if (isTRUE(summary_entry$success)) {
@@ -1902,7 +2097,7 @@ app_server <- function(input, output, session) {
           }
         }
         
-        shiny::incProgress(0.4, detail = "Setting up report template...")
+        shiny::incProgress(0.4, detail = i18n$t("Setting up report template..."))
         # Define temporary file paths
         temp_report_path <- tempfile(fileext = ".Rmd")
         temp_output_path <- tempfile(fileext = paste0(".", input$reportFormat))
@@ -1918,19 +2113,19 @@ app_server <- function(input, output, session) {
         
         # Prepare parameters for R Markdown
         params_list <- list(
-          report_title = paste("Forecast Report -", toupper(input$reportFormat)),
+          report_title = paste(i18n$t("Forecast Report"), "-", toupper(input$reportFormat)),
           forecast_plot = plot_obj_reactive(),    # The actual plotly object
           metrics_table = metrics_df_reactive(),  # The data frame
           model_summaries = model_summaries_for_report,
           run_date = Sys.time()
         )
         
-        shiny::incProgress(0.6, detail = "Rendering report...")
+        shiny::incProgress(0.6, detail = i18n$t("Rendering report..."))
         # Render the R Markdown document
         tryCatch({
           if (input$reportFormat == "pdf") {
             if (!tinytex::is_tinytex()) {
-              shiny::showNotification("TinyTeX is not installed. PDF reports require a LaTeX distribution. Consider installing TinyTeX with tinytex::install_tinytex().", type = "warning", duration = 15)
+              shiny::showNotification(i18n$t("TinyTeX is not installed. PDF reports require a LaTeX distribution. Consider installing TinyTeX with tinytex::install_tinytex()."), type = "warning", duration = 15)
             }
           }
           rmarkdown::render(
@@ -1941,16 +2136,16 @@ app_server <- function(input, output, session) {
             envir = new.env(parent = globalenv()) # Render in a clean environment
           )
           
-          shiny::incProgress(0.9, detail = "Finalizing...")
+          shiny::incProgress(0.9, detail = i18n$t("Finalizing..."))
           # Copy the rendered file to the 'file' argument of downloadHandler
           if (!file.exists(temp_output_path)) {
-            stop(paste("Rendered report file not found at temporary path:", temp_output_path, "Cannot proceed with download."))
+            stop(paste(i18n$t("Rendered report file not found at temporary path:"), temp_output_path, i18n$t("Cannot proceed with download.")))
           }
           file.copy(temp_output_path, file, overwrite = TRUE)
-          shiny::showNotification("Report generated successfully!", type = "message", duration = 5)
+          shiny::showNotification(i18n$t("Report generated successfully!"), type = "message", duration = 5)
           
         }, error = function(e_render) {
-          error_msg_render <- paste("Error during rmarkdown::render:", conditionMessage(e_render))
+          error_msg_render <- paste(i18n$t("Error during rmarkdown::render:"), conditionMessage(e_render))
           # Log full error to console for debugging
           print(error_msg_render)
           print(e_render) # Print the full error object
@@ -1958,12 +2153,12 @@ app_server <- function(input, output, session) {
           # Check if the error is specifically a LaTeX error for PDF
           if (input$reportFormat == "pdf" && grepl("LaTeX failed to compile", conditionMessage(e_render), ignore.case = TRUE)) {
             error_msg_render <- paste(error_msg_render, 
-                                      "This often means essential LaTeX packages are missing. ",
-                                      "If using TinyTeX, try running tinytex::tlmgr_install(c('fancyhdr', 'titling', 'framed')) or check the .log file mentioned in the error for more details. ",
-                                      "The log file path is often in the error message: ",
+                                      i18n$t("This often means essential LaTeX packages are missing."),
+                                      i18n$t("If using TinyTeX, try running tinytex::tlmgr_install(c('fancyhdr', 'titling', 'framed')) or check the .log file mentioned in the error for more details."),
+                                      i18n$t("The log file path is often in the error message:"),
                                       gsub(".*\\file([[:alnum:]]+)\\.tex.*",
                                            "\\\\file\\1.log",
-                                           conditionMessage(e_render))
+                                           conditionMessage(e_render)) # Log path might not be translatable easily
                                     )
           }
           shiny::showNotification(error_msg_render, type = "error", duration = 20)

@@ -9,12 +9,8 @@
 # @importFrom rlang %||%
 mod_model_summary_ui <- function(id){
   ns <- NS(id)
-  # tagList(
-  #   h4("Model Summary"), # Section heading
-  #   uiOutput(ns("summaryText")) # Dynamic content area
-  # )
   tagList(
-    h4("Model Summary"),
+    h4(textOutput(ns("ui_model_summary_title_h4"), inline = TRUE)),
     # Placeholder for the dropdown selector
     uiOutput(ns("modelSelectorUI")),
     hr(style="margin-top: 5px; margin-bottom: 10px;"), # Add a separator
@@ -79,7 +75,7 @@ mod_model_summary_server <- function(id, reactive_run_summary_list){ # Simplifie
 
       model_choices <- names(successful_model_info)
       selectInput(ns("selected_summary_model"),
-                  label = "Select Model to View Summary:",
+                  label = i18n$t("Select Model to View Summary:"),
                   choices = model_choices,
                   selected = model_choices[1]) # Select the first one by default
     })
@@ -149,42 +145,45 @@ mod_model_summary_server <- function(id, reactive_run_summary_list){ # Simplifie
 
           d_interp <- ""
           if (!is.na(order_d) && order_d > 0) {
-            d_context <- if (agg_level == "Daily") "day-to-day trends" else if (agg_level=="Weekly") "week-to-week trends" else "trends"
-            d_interp <- paste("A non-seasonal differencing order (d) of", order_d,
-                              "suggests the model is differencing the data", order_d,
-                              "time(s) to make it stationary, likely removing", d_context,".")
+            d_context_key <- if (agg_level == "Daily") "day-to-day trends" else if (agg_level=="Weekly") "week-to-week trends" else "trends"
+            d_interp <- sprintf(i18n$t("A non-seasonal differencing order (d) of %d suggests the model is differencing the data %d time(s) to make it stationary, likely removing %s."),
+                                order_d, order_d, i18n$t(d_context_key))
           }
           D_interp <- ""
           if (is_seasonal && !is.na(order_D) && order_D > 0 && !is.na(order_period)) {
-            D_context <- if (agg_level == "Daily" && order_period==7) "weekly patterns (comparing to same day last week)"
+            D_context_key <- if (agg_level == "Daily" && order_period==7) "weekly patterns (comparing to same day last week)"
             else if (agg_level == "Weekly" && order_period %in% c(52, 53)) "yearly patterns (comparing to same week last year)"
-            else paste0("patterns with a period of ", order_period)
-            D_interp <- paste("A seasonal differencing order (D) of", order_D,
-                              "suggests the model is using seasonal differencing to remove", D_context,".")
+            else "patterns with a period of %d" # This one needs sprintf later
+
+            if (grepl("%d", D_context_key)) {
+                D_interp <- sprintf(i18n$t("A seasonal differencing order (D) of %d suggests the model is using seasonal differencing to remove %s."),
+                                    order_D, sprintf(i18n$t(D_context_key), order_period))
+            } else {
+                D_interp <- sprintf(i18n$t("A seasonal differencing order (D) of %d suggests the model is using seasonal differencing to remove %s."),
+                                    order_D, i18n$t(D_context_key))
+            }
           }
           # --- End Interpretation Text ---
 
           tagList(
-            tags$p(tags$strong("Model Type:"), " ARIMA (Autoregressive Integrated Moving Average)"),
-            tags$p(tags$strong("Configuration:")),
+            tags$p(tags$strong(i18n$t("Model Type:")), i18n$t("ARIMA (Autoregressive Integrated Moving Average)")),
+            tags$p(tags$strong(i18n$t("Configuration:"))),
             tags$ul(
-              tags$li(paste("Selection Method:", ifelse(is_auto, "Automatic (auto.arima)", "Manual"))),
-              tags$li(paste0("Non-Seasonal Order (p, d, q): (", order_p, ", ", order_d, ", ", order_q, ")")),
-              tags$li(paste("Seasonal Component:", ifelse(is_seasonal, paste0("Enabled (Period=", order_period, ")"), "Disabled"))),
-              # Only show seasonal order if enabled
+              tags$li(paste(i18n$t("Selection Method:"), ifelse(is_auto, i18n$t("Automatic (auto.arima)"), i18n$t("Manual")))),
+              tags$li(paste0(i18n$t("Non-Seasonal Order (p, d, q):"), " (", order_p, ", ", order_d, ", ", order_q, ")")),
+              tags$li(paste(i18n$t("Seasonal Component:"), ifelse(is_seasonal, sprintf(i18n$t("Enabled (Period="), order_period), i18n$t("Disabled")))),
               if (is_seasonal) {
-                # tags$li(paste0("Seasonal Order (P, D, Q): (", order_P, ", ", order_D, ", ", order_Q, ")"))
-                tags$li(paste0("Seasonal Order (P, D, Q): (", order_P %||% "NA", ", ", order_D %||% "NA", ", ", order_Q %||% "NA", ")")) # Use %||% or similar for NA display
+                tags$li(paste0(i18n$t("Seasonal Order (P, D, Q):"), " (", order_P %||% "NA", ", ", order_D %||% "NA", ", ", order_Q %||% "NA", ")"))
               }
             ),
-            tags$p(tags$strong("Interpretation:")),
+            tags$p(tags$strong(i18n$t("Interpretation:"))),
             tags$ul(
-              tags$li("ARIMA models capture linear time dependencies."),
-              tags$li(tags$code("p/P"), ": Autoregressive components (dependency on past values)."),
-              tags$li(tags$code("d/D"), ": Differencing components (to achieve stationarity)."),
-              if(d_interp != "") tags$li(d_interp), # Show interpretation if applicable
-              if(D_interp != "") tags$li(D_interp), # Show interpretation if applicable
-              tags$li(tags$code("q/Q"), ": Moving Average components (dependency on past errors).")
+              tags$li(i18n$t("ARIMA models capture linear time dependencies.")),
+              tags$li(tags$code("p/P"), i18n$t(": Autoregressive components (dependency on past values).")),
+              tags$li(tags$code("d/D"), i18n$t(": Differencing components (to achieve stationarity).")),
+              if(d_interp != "") tags$li(d_interp),
+              if(D_interp != "") tags$li(D_interp),
+              tags$li(tags$code("q/Q"), i18n$t(": Moving Average components (dependency on past errors)."))
             )
           )
         }, # End ARIMA case
@@ -192,39 +191,33 @@ mod_model_summary_server <- function(id, reactive_run_summary_list){ # Simplifie
         "ETS" = {
           is_manual <- config$manual
           ets_details <- if(is_manual) {
-            # Display the user's selections
-            paste0("Manual Spec: E=", config$ets_e, ", T=", config$ets_t, ", S=", config$ets_s,
-                   ", Damped=", config$ets_damped_str)
+            sprintf(i18n$t("Manual Spec: E=%s, T=%s, S=%s, Damped=%s"), config$ets_e, config$ets_t, config$ets_s, config$ets_damped_str)
           } else {
-            "Automatic Selection (based on AICc)"
+            i18n$t("Automatic Selection (based on AICc)")
           }
-          # Use the fitted_method stored in model_info
-          fitted_model_desc <- model_info$fitted_method %||% "(Not available)"
+          fitted_model_desc <- model_info$fitted_method %||% i18n$t("(Not available)")
 
           tagList(
-            tags$p(tags$strong("Model Type:"), " ETS (Error, Trend, Seasonality)"),
-            tags$p(tags$strong("Configuration:")),
+            tags$p(tags$strong(i18n$t("Model Type:")), i18n$t("ETS (Error, Trend, Seasonality)")),
+            tags$p(tags$strong(i18n$t("Configuration:"))),
             tags$ul(
-              tags$li(paste("Selection Method:", ets_details)),
-              tags$li(paste("Fitted Model:", fitted_model_desc)) # Placeholder
-            ),
-            # ... (Interpretation text as before) ...
+              tags$li(paste(i18n$t("Selection Method:"), ets_details)),
+              tags$li(paste(i18n$t("Fitted Model:"), fitted_model_desc))
+            )
           )
         }, # End ETS case
         "TBATS" = {
-          # Extract details if possible from model object (passed via r$forecast_obj -> reactive input?)
-          # For now, just state automatic selection
           tagList(
-            tags$p(tags$strong("Model Type:"), " TBATS"),
-            tags$p(tags$strong("Configuration:")),
+            tags$p(tags$strong(i18n$t("Model Type:")), i18n$t("TBATS")),
+            tags$p(tags$strong(i18n$t("Configuration:"))),
             tags$ul(
-              tags$li("Automatic selection via ", tags$code("forecast::tbats()"), "."),
-              tags$li(paste("Fitted Model:", model_info$fitted_method %||% "(Not available)")) # Display fitted method
+              tags$li(i18n$t("Automatic selection via forecast::tbats().")),
+              tags$li(paste(i18n$t("Fitted Model:"), model_info$fitted_method %||% i18n$t("(Not available)")))
             ),
-            tags$p(tags$strong("Interpretation:")),
+            tags$p(tags$strong(i18n$t("Interpretation:"))),
             tags$ul(
-              tags$li("Handles complex seasonality (multiple periods, non-integer) using trigonometric functions (Fourier series)."),
-              tags$li("Also models trend, ARMA error correlation, and can apply Box-Cox transformation.")
+              tags$li(i18n$t("Handles complex seasonality (multiple periods, non-integer) using trigonometric functions (Fourier series).")),
+              tags$li(i18n$t("Also models trend, ARMA error correlation, and can apply Box-Cox transformation."))
             )
           )
         },
@@ -232,171 +225,64 @@ mod_model_summary_server <- function(id, reactive_run_summary_list){ # Simplifie
         "Prophet" = {
           growth_model <- config$growth
           tagList(
-            tags$p(tags$strong("Model Type:"), " Prophet (Additive Regression Model)"),
-            tags$p(tags$strong("Configuration:")),
+            tags$p(tags$strong(i18n$t("Model Type:")), i18n$t("Prophet (Additive Regression Model)")),
+            tags$p(tags$strong(i18n$t("Configuration:"))),
             tags$ul(
-              tags$li(paste("Growth Model:", growth_model)),
+              tags$li(paste(i18n$t("Growth Model:"), growth_model)),
               if(growth_model == "logistic") {
-                tags$li(paste("Capacity (Cap):", config$prophet_capacity))
+                tags$li(paste(i18n$t("Capacity (Cap):"), config$prophet_capacity))
               },
-              tags$li(paste("Yearly Seasonality:", ifelse(config$yearly, "Enabled", "Disabled"))),
-              tags$li(paste("Weekly Seasonality:", ifelse(config$weekly, "Enabled", "Disabled"))),
-              tags$li(paste("Daily Seasonality:", ifelse(config$daily, "Enabled", "Disabled"))),
-              tags$li(paste("Changepoint Prior Scale:", config$changepoint_scale)),
-              # Check if holidays were actually used (check if the reactive value is non-NULL)
-              if(!is.null(config$used_holidays)) { # Access reactive value
-                tags$li("Holidays: Custom holiday file provided.")
+              tags$li(paste(i18n$t("Yearly Seasonality"),":", ifelse(config$yearly, i18n$t("Enabled"), i18n$t("Disabled")))),
+              tags$li(paste(i18n$t("Weekly Seasonality"),":", ifelse(config$weekly, i18n$t("Enabled"), i18n$t("Disabled")))),
+              tags$li(paste(i18n$t("Daily Seasonality (for daily data)"),":", ifelse(config$daily, i18n$t("Enabled"), i18n$t("Disabled")))),
+              tags$li(paste(i18n$t("Changepoint Prior Scale:"), config$changepoint_scale)),
+              if(isTRUE(config$used_holidays)) {
+                tags$li(i18n$t("Holidays: Custom holiday file provided."))
               } else {
-                tags$li("Holidays: None provided.")
+                tags$li(i18n$t("Holidays: None provided."))
               },
-              if(!is.null(config$used_regressors)) { # Access reactive value
-                # Maybe list names if not too many?
-                regressor_names <- setdiff(names(config$used_regressors), "ds")
-                tags$li(paste("External Regressors:", paste(regressor_names, collapse=", ")))
+              if(isTRUE(config$used_regressors)) {
+                 regressor_names <- setdiff(names(config$used_regressors %||% list()), "ds") # Ensure config$used_regressors is not NULL
+                 tags$li(paste(i18n$t("External Regressors:"), paste(regressor_names, collapse=", ")))
               } else {
-                tags$li("External Regressors: None provided.")
+                tags$li(i18n$t("External Regressors: None provided."))
               }
             ),
-            tags$p(tags$strong("Interpretation:")),
+            tags$p(tags$strong(i18n$t("Interpretation:"))),
             tags$ul(
-              tags$li("Prophet decomposes the time series into trend, seasonalities, and holiday effects."),
-              tags$li(paste("Trend modeled as piecewise", config$growth,".")),
-              tags$li(paste("Changepoint Prior Scale (", config$changepoint_scale ,") controls trend flexibility (larger = more flexible).")),
-              # List enabled seasonalities
-              { enabled_seasons <- c
-              if(config$yearly) enabled_seasons <- c(enabled_seasons, "Yearly")
-              if(config$weekly) enabled_seasons <- c(enabled_seasons, "Weekly")
-              if(config$daily) enabled_seasons <- c(enabled_seasons, "Daily")
-              tags$li(paste("Seasonalities Enabled:", paste(enabled_seasons, collapse=", ") ))
+              tags$li(i18n$t("Prophet decomposes the time series into trend, seasonalities, and holiday effects.")),
+              tags$li(sprintf(i18n$t("Trend modeled as piecewise %s."), config$growth)),
+              tags$li(sprintf(i18n$t("Changepoint Prior Scale (%s) controls trend flexibility (larger = more flexible)."), config$changepoint_scale)),
+              { enabled_seasons <- c()
+              if(config$yearly) enabled_seasons <- c(enabled_seasons, i18n$t("Yearly"))
+              if(config$weekly) enabled_seasons <- c(enabled_seasons, i18n$t("Weekly"))
+              if(config$daily) enabled_seasons <- c(enabled_seasons, i18n$t("Daily"))
+              tags$li(paste(i18n$t("Seasonalities Enabled:"), paste(enabled_seasons, collapse=", ") ))
               },
-              if(!is.null(config$used_holidays)) tags$li("Custom holidays included.")
+              if(isTRUE(config$used_holidays)) tags$li(i18n$t("Custom holidays included."))
             )
           )
         }, # End Prophet case
 
         "XGBoost" = {
           tagList(
-            tags$p(tags$strong("Model Type:"), " XGBoost (eXtreme Gradient Boosting - Tree-based Ensemble)"),
-            tags$p(tags$strong("Feature Engineering:")),
+            tags$p(tags$strong(i18n$t("Model Type:")), i18n$t("XGBoost (eXtreme Gradient Boosting - Tree-based Ensemble)")),
+            tags$p(tags$strong(i18n$t("Feature Engineering:"))),
             tags$ul(
-              tags$li("Time series features generated automatically via a recipe:"),
+              tags$li(i18n$t("Time series features generated automatically via a recipe:")),
               tags$ul(
-                tags$li("Date components (year, month, week, day of week, etc.)"),
-                tags$li("Lagged values of the target variable."),
-                tags$li("Rolling window statistics (mean, sd) on lagged values."),
-                tags$li("Fourier terms for seasonality.")
+                tags$li(i18n$t("Date components (year, month, week, day of week, etc.)")),
+                tags$li(i18n$t("Lagged values of the target variable.")),
+                tags$li(i18n$t("Rolling window statistics (mean, sd) on lagged values.")),
+                tags$li(i18n$t("Fourier terms for seasonality."))
               )
             ),
-            tags$p(tags$strong("Hyperparameters:")),
-            # Display Tuned Parameters if available
+            tags$p(tags$strong(i18n$t("Hyperparameters:"))),
             if (!is.null(model_info$tuned_params)) {
               tuned <- model_info$tuned_params
               tags$ul(
-                tags$li(paste("Tuning Method: Time Series CV + tune_grid")),
-                tags$li(tags$strong("Best Parameters Found:")),
-                tags$ul(
-                  # Iterate through the tuned parameters tibble
-                  # Use names() and tuned[[name]] to display dynamically
-                  lapply(names(tuned)[!names(tuned) %in% ".config"], function(param_name) {
-                     tags$li(paste0(param_name, ": ", round(tuned[[param_name]], 4))) # Round numeric values
-                  })
-                )
-              )
-            } else {
-              # Fallback if tuning wasn't run or failed (shouldn't happen with current setup)
-              tags$ul(
-                tags$li(paste("Number of Rounds (Trees):", config$xgb_nrounds)),
-                tags$li(paste("Learning Rate (eta):", config$xgb_eta)),
-                tags$li(paste("Max Tree Depth:", config$xgb_max_depth)),
-                tags$li(paste("Subsample Ratio:", config$xgb_subsample)),
-                tags$li(paste("Column Sample Ratio:", config$xgb_colsample)),
-                tags$li(paste("Min Split Loss (gamma):", config$xgb_gamma))
-              )
-            },
-            tags$p(tags$strong("Interpretation:")),
-            tags$ul(
-              tags$li("XGBoost captures potentially complex non-linear patterns and feature interactions."),
-              tags$li("Relies heavily on engineered features (lags, date parts, rolling stats, Fourier terms) to understand time dynamics."),
-              tags$li("Does not inherently extrapolate trends like ARIMA/Prophet.")
-            )
-          )
-        }, # End XGBoost case
-
-        "GAM" = {
-          gam_trend_type <- config$smooth_trend
-          gam_use_season_y <- config$use_season_y
-          gam_use_season_w <- config$use_season_w
-          tagList(
-            tags$p(tags$strong("Model Type:"), " GAM (Generalized Additive Model)"),
-            tags$p(tags$strong("Configuration:")),
-            tags$ul(
-              tags$li(paste("Trend Type:", gam_trend_type)),
-              tags$li(paste("Yearly Seasonality (Day of Year):", ifelse(gam_use_season_y, "Included (Smooth)", "Excluded"))),
-              tags$li(paste("Weekly Seasonality (Day of Week):", ifelse(gam_use_season_w, "Included (Smooth)", "Excluded")))
-              # Add regressors/holidays if implemented
-            ),
-            tags$p(tags$strong("Interpretation:")),
-            tags$ul(
-              tags$li("Models components using flexible smooth functions (splines)."),
-              tags$li("Captures non-linear trends and complex seasonal patterns."),
-              tags$li("Assumes errors are independent (autocorrelation might need addressing via residuals or model structure if significant).")
-            )
-          )
-        }, # End GAM case
-        "RF" = {
-          num_trees <- config$rf_num_trees
-          mtry_in <- config$rf_mtry
-          mtry_disp <- if (!is.null(mtry_in) && mtry_in > 0) as.character(mtry_in) else "Auto (sqrt(p))"
-          node_size <- config$rf_min_node_size
-          tagList(
-            tags$p(tags$strong("Model Type:"), " Random Forest (Tree Ensemble via 'ranger')"),
-            tags$p(tags$strong("Feature Engineering:")),
-            tags$ul(
-              # Copied from XGBoost - assumes same recipe
-              tags$li("Time series features generated automatically via a recipe:"),
-              tags$ul(
-                tags$li("Date components (year, month, week, etc.)"),
-                tags$li("Lagged values of the target variable."),
-                tags$li("Rolling window statistics (mean, sd) on lagged values."),
-                tags$li("Fourier terms for seasonality.")
-              )
-            ),
-            tags$p(tags$strong("Key Hyperparameters:")),
-            tags$ul(
-              tags$li(paste("Number of Trees:", num_trees %||% 500)),
-              tags$li(paste("Variables per Split (mtry):", mtry_disp)),
-              tags$li(paste("Min Node Size:", node_size %||% 5))
-            ),
-            tags$p(tags$strong("Interpretation:")),
-            tags$ul(
-              tags$li("Builds multiple independent decision trees on bootstrapped samples of data and features."),
-              tags$li("Predictions are typically the average of individual tree predictions."),
-              tags$li("Effective for non-linear patterns and interactions; often robust to overfitting."),
-              tags$li("Like XGBoost, relies on engineered features for time dynamics.")
-            )
-          )
-        }, # End RF case
-        "RF" = {
-          tagList(
-            tags$p(tags$strong("Model Type:"), " Random Forest (Tree Ensemble via 'ranger')"),
-            tags$p(tags$strong("Feature Engineering:")),
-            tags$ul(
-              # Copied from XGBoost - assumes same recipe
-              tags$li("Time series features generated automatically via a recipe:"),
-              tags$ul(
-                tags$li("Date components (year, month, week, etc.)"),
-                tags$li("Lagged values of the target variable."),
-                tags$li("Rolling window statistics (mean, sd) on lagged values."),
-                tags$li("Fourier terms for seasonality.")
-              )
-            ),
-            tags$p(tags$strong("Hyperparameters:")),
-            # Display Tuned Parameters if available
-            if (!is.null(model_info$tuned_params)) {
-              tuned <- model_info$tuned_params
-              tags$ul(
-                tags$li(paste("Tuning Method: Time Series CV + tune_grid")),
-                tags$li(tags$strong("Best Parameters Found:")),
+                tags$li(i18n$t("Tuning Method: Time Series CV + tune_grid")),
+                tags$li(tags$strong(i18n$t("Best Parameters Found:"))),
                 tags$ul(
                   lapply(names(tuned)[!names(tuned) %in% ".config"], function(param_name) {
                      tags$li(paste0(param_name, ": ", round(tuned[[param_name]], 4)))
@@ -404,74 +290,125 @@ mod_model_summary_server <- function(id, reactive_run_summary_list){ # Simplifie
                 )
               )
             } else {
-              # Fallback to original config if tuning info not present
-              num_trees <- config$rf_num_trees
-              mtry_in <- config$rf_mtry
-              mtry_disp <- if (!is.null(mtry_in) && mtry_in > 0) as.character(mtry_in) else "Auto (sqrt(p))"
-              node_size <- config$rf_min_node_size
               tags$ul(
-                tags$li(paste("Number of Trees:", num_trees %||% 500)),
-                tags$li(paste("Variables per Split (mtry):", mtry_disp)),
-                tags$li(paste("Min Node Size:", node_size %||% 5))
+                tags$li(sprintf(i18n$t("Number of Rounds (Trees): %s"), config$xgb_nrounds)),
+                tags$li(sprintf(i18n$t("Learning Rate (eta): %s"), config$xgb_eta)),
+                tags$li(sprintf(i18n$t("Max Tree Depth: %s"), config$xgb_max_depth)),
+                tags$li(sprintf(i18n$t("Subsample Ratio: %s"), config$xgb_subsample)),
+                tags$li(sprintf(i18n$t("Column Sample Ratio: %s"), config$xgb_colsample)),
+                tags$li(sprintf(i18n$t("Min Split Loss (gamma): %s"), config$xgb_gamma))
               )
             },
-            tags$p(tags$strong("Interpretation:")),
+            tags$p(tags$strong(i18n$t("Interpretation:"))),
             tags$ul(
-              tags$li("Builds multiple independent decision trees on bootstrapped samples of data and features."),
-              tags$li("Predictions are typically the average of individual tree predictions."),
-              tags$li("Effective for non-linear patterns and interactions; often robust to overfitting."),
-              tags$li("Like XGBoost, relies on engineered features for time dynamics.")
+              tags$li(i18n$t("XGBoost captures potentially complex non-linear patterns and feature interactions.")),
+              tags$li(i18n$t("Relies heavily on engineered features (lags, date parts, rolling stats, Fourier terms) to understand time dynamics.")),
+              tags$li(i18n$t("Does not inherently extrapolate trends like ARIMA/Prophet."))
+            )
+          )
+        }, # End XGBoost case
+
+        "GAM" = {
+          gam_trend_type_display <- if (config$smooth_trend) i18n$t("Smooth (Spline)") else i18n$t("Linear")
+          gam_use_season_y_display <- ifelse(config$use_season_y, i18n$t("Included (Smooth)"), i18n$t("Excluded"))
+          gam_use_season_w_display <- ifelse(config$use_season_w, i18n$t("Included (Smooth)"), i18n$t("Excluded"))
+          tagList(
+            tags$p(tags$strong(i18n$t("Model Type:")), i18n$t("GAM (Generalized Additive Model)")),
+            tags$p(tags$strong(i18n$t("Configuration:"))),
+            tags$ul(
+              tags$li(paste(i18n$t("Trend Type: %s"), gam_trend_type_display)),
+              tags$li(paste(i18n$t("Yearly Seasonality (Day of Year): %s"), gam_use_season_y_display)),
+              tags$li(paste(i18n$t("Weekly Seasonality (Day of Week): %s"), gam_use_season_w_display))
+            ),
+            tags$p(tags$strong(i18n$t("Interpretation:"))),
+            tags$ul(
+              tags$li(i18n$t("Models components using flexible smooth functions (splines).")),
+              tags$li(i18n$t("Captures non-linear trends and complex seasonal patterns.")),
+              tags$li(i18n$t("Assumes errors are independent (autocorrelation might need addressing via residuals or model structure if significant)."))
+            )
+          )
+        }, # End GAM case
+        "RF" = { # Combined RF logic, handles tuned and non-tuned
+          tagList(
+            tags$p(tags$strong(i18n$t("Model Type:")), i18n$t("Random Forest (Tree Ensemble via 'ranger')")),
+            tags$p(tags$strong(i18n$t("Feature Engineering:"))),
+            tags$ul(
+              tags$li(i18n$t("Time series features generated automatically via a recipe:")),
+              tags$ul(
+                tags$li(i18n$t("Date components (year, month, week, day of week, etc.)")),
+                tags$li(i18n$t("Lagged values of the target variable.")),
+                tags$li(i18n$t("Rolling window statistics (mean, sd) on lagged values.")),
+                tags$li(i18n$t("Fourier terms for seasonality."))
+              )
+            ),
+            tags$p(tags$strong(i18n$t("Hyperparameters:"))),
+            if (!is.null(model_info$tuned_params)) {
+              tuned <- model_info$tuned_params
+              tags$ul(
+                tags$li(i18n$t("Tuning Method: Time Series CV + tune_grid")),
+                tags$li(tags$strong(i18n$t("Best Parameters Found:"))),
+                tags$ul(
+                  lapply(names(tuned)[!names(tuned) %in% ".config"], function(param_name) {
+                     tags$li(paste0(param_name, ": ", round(tuned[[param_name]], 4)))
+                  })
+                )
+              )
+            } else {
+              num_trees <- config$rf_num_trees
+              mtry_in <- config$rf_mtry
+              mtry_disp <- if (!is.null(mtry_in) && mtry_in > 0) as.character(mtry_in) else i18n$t("Auto (sqrt(p))")
+              node_size <- config$rf_min_node_size
+              tags$ul(
+                tags$li(sprintf(i18n$t("Number of Trees: %s"), num_trees %||% 500)),
+                tags$li(sprintf(i18n$t("Variables per Split (mtry): %s"), mtry_disp)),
+                tags$li(sprintf(i18n$t("Min Node Size: %s"), node_size %||% 5))
+              )
+            },
+            tags$p(tags$strong(i18n$t("Interpretation:"))),
+            tags$ul(
+              tags$li(i18n$t("Builds multiple independent decision trees on bootstrapped samples of data and features.")),
+              tags$li(i18n$t("Predictions are typically the average of individual tree predictions.")),
+              tags$li(i18n$t("Effective for non-linear patterns and interactions; often robust to overfitting.")),
+              tags$li(i18n$t("Like XGBoost, relies on engineered features for time dynamics."))
             )
           )
         }, # End RF case
-
         "NNETAR" = {
           cfg <- model_info$config
-          # Determine lambda display value
-          lambda_display <- if (isTRUE(cfg$nnetar_lambda_auto)) "auto" else (cfg$nnetar_lambda_manual %||% "N/A")
-          
-          # Determine size display value
-          size_display <- if (cfg$nnetar_size_method == "auto") {
-            # The actual auto-calculated size might be part of fitted_method or needs to be extracted if available
-            # For now, just indicate auto. If model_info$fitted_method contains it like NNAR(p,P,k)[freq], we can parse k.
-            "auto" 
-          } else {
-            as.character(cfg$nnetar_size_manual %||% "N/A")
-          }
+          lambda_display <- if (isTRUE(cfg$nnetar_lambda_auto)) i18n$t("Auto") else (cfg$nnetar_lambda_manual %||% "N/A")
+          size_display <- if (cfg$nnetar_size_method == "auto") i18n$t("Auto") else as.character(cfg$nnetar_size_manual %||% "N/A")
 
           tagList(
-            tags$p(tags$strong("Model Type:"), " NNETAR (Neural Network Autoregression)"),
-            tags$p(tags$strong("Configuration:")),
+            tags$p(tags$strong(i18n$t("Model Type:")), i18n$t("NNETAR (Neural Network Autoregression)")),
+            tags$p(tags$strong(i18n$t("Configuration:"))),
             tags$ul(
-              tags$li(paste("Non-seasonal Lags (p):", cfg$nnetar_p %||% "N/A")),
-              tags$li(paste("Seasonal Lags (P):", cfg$nnetar_P %||% "N/A")),
-              tags$li(paste("Hidden Layer Size Calculation:", cfg$nnetar_size_method %||% "N/A")),
+              tags$li(sprintf(i18n$t("Non-seasonal Lags (p): %s"), cfg$nnetar_p %||% "N/A")),
+              tags$li(sprintf(i18n$t("Seasonal Lags (P): %s"), cfg$nnetar_P %||% "N/A")),
+              tags$li(paste(i18n$t("Hidden Layer Size Calculation:"), i18n$t(cfg$nnetar_size_method %||% "N/A"))), # Translate "auto" or "manual"
               if(cfg$nnetar_size_method == "manual") {
-                tags$li(paste("Manual Hidden Layer Size (size):", size_display))
+                tags$li(sprintf(i18n$t("Manual Hidden Layer Size (size): %s"), size_display))
               },
-              tags$li(paste("Number of Networks to Average (repeats):", cfg$nnetar_repeats %||% "N/A")),
-              tags$li(paste("Box-Cox Transformation (lambda):", lambda_display))
+              tags$li(sprintf(i18n$t("Number of Networks to Average (repeats): %s"), cfg$nnetar_repeats %||% "N/A")),
+              tags$li(sprintf(i18n$t("Box-Cox Transformation (lambda): %s"), lambda_display))
             ),
-            tags$p(tags$strong("Fitted Model Details:")),
+            tags$p(tags$strong(i18n$t("Fitted Model Details:"))),
             tags$ul(
-              tags$li(paste("Fitted Model:", model_info$fitted_method %||% "N/A")),
-              tags$li(paste("Frequency Used:", model_info$frequency_used %||% "N/A"))
+              tags$li(paste(i18n$t("Fitted Model:"), model_info$fitted_method %||% i18n$t("(Not available)"))),
+              tags$li(sprintf(i18n$t("Frequency Used: %s"), model_info$frequency_used %||% "N/A"))
             ),
-            tags$p(tags$strong("Interpretation:")),
+            tags$p(tags$strong(i18n$t("Interpretation:"))),
             tags$ul(
-              tags$li("NNETAR is a feed-forward neural network model that uses lagged values of the time series as inputs."),
-              tags$li(tags$code("p"), "(Non-seasonal lags): Number of past non-seasonal observations used as predictors."),
-              tags$li(tags$code("P"), "(Seasonal lags): Number of past seasonal observations (e.g., same period last year/season) used as predictors."),
-              tags$li(tags$code("Size"), "(Hidden Layer Nodes): Number of nodes in the single hidden layer. 'auto' typically calculates as (p+P+1)/2. More nodes allow for more complex patterns but risk overfitting."),
-              tags$li(tags$code("Repeats"), ": The model is fitted multiple times (e.g., ", cfg$nnetar_repeats %||% "N/A", " times) with different random starting weights, and the results are averaged to improve robustness and avoid poor local optima."),
-              tags$li(tags$code("Lambda"), ": Parameter for Box-Cox transformation. 'auto' selects lambda automatically; a specific value applies that transformation to stabilize variance.")
+              tags$li(i18n$t("NNETAR is a feed-forward neural network model that uses lagged values of the time series as inputs.")),
+              tags$li(tags$code("p"), i18n$t("(Non-seasonal lags): Number of past non-seasonal observations used as predictors.")),
+              tags$li(tags$code("P"), i18n$t("(Seasonal lags): Number of past seasonal observations (e.g., same period last year/season) used as predictors.")),
+              tags$li(tags$code("Size"), i18n$t("(Hidden Layer Nodes): Number of nodes in the single hidden layer. 'auto' typically calculates as (p+P+1)/2. More nodes allow for more complex patterns but risk overfitting.")),
+              tags$li(tags$code("Repeats"), sprintf(i18n$t(": The model is fitted multiple times (e.g., %s times) with different random starting weights, and the results are averaged to improve robustness and avoid poor local optima."), cfg$nnetar_repeats %||% "N/A")),
+              tags$li(tags$code("Lambda"), i18n$t(": Parameter for Box-Cox transformation. 'auto' selects lambda automatically; a specific value applies that transformation to stabilize variance."))
             )
           )
         }, # End NNETAR case
-
-        # Default case if model_name is not recognized
         {
-          tags$p("Summary not available for this model type.")
+          tags$p(i18n$t("Summary not available for this model type."))
         }
       ) # End switch
       tags$div(class = "model-summary-box", summary_content)
