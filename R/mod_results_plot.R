@@ -43,8 +43,8 @@ mod_results_plot_server <- function(id, reactive_train_df, reactive_test_df, rea
   moduleServer( id, function(input, output, session){
     ns <- session$ns
 
-    output$forecastPlot <- plotly::renderPlotly({
-
+    # Reactive expression to store the plot object
+    reactive_plot_object <- reactive({
       # Require the essential data components
       # req(reactive_train_df())
       # req(reactive_test_df())
@@ -141,278 +141,76 @@ mod_results_plot_server <- function(id, reactive_train_df, reactive_test_df, rea
                                       xanchor = "center"
                                       #, x = 0.1, y = 0.9
                                       )) # Ensure legend is positioned
-      # p <- p %>% layout(legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.1), ...)
-      if (!is.null(holidays_data) && nrow(holidays_data) > 0 && "ds" %in% names(holidays_data)) {
-        # Asegurar que 'ds' sea de tipo Date
-        holidays_to_plot <- holidays_data %>%
+      
+      # --- Add Global Holidays Display ---
+      if (!is.null(holidays_data) && nrow(holidays_data) > 0 &&
+          all(c("ds", "holiday") %in% names(holidays_data))) {
+        
+        processed_holidays <- holidays_data %>%
           dplyr::mutate(ds = as.Date(ds)) %>%
-          dplyr::distinct(ds, .keep_all = TRUE) # Evitar líneas duplicadas si hay múltiples feriados en un día
-
-        min_plot_date <- min(c(train_data$ds, if(nrow(test_data)>0) test_data$ds else NULL, unlist(lapply(forecast_list, function(fl) fl$ds))), na.rm = TRUE)
-        max_plot_date <- max(c(train_data$ds, if(nrow(test_data)>0) test_data$ds else NULL, unlist(lapply(forecast_list, function(fl) fl$ds))), na.rm = TRUE)
-
-        holidays_in_range <- holidays_to_plot %>%
-          dplyr::filter(ds >= min_plot_date & ds <= max_plot_date)
-
+          dplyr::distinct(ds, .keep_all = TRUE) # Ensure unique dates for lines/markers
+        
+        current_plot_data_dates <- c()
+        if (!is.null(train_data) && nrow(train_data) > 0) current_plot_data_dates <- c(current_plot_data_dates, train_data$ds)
+        if (!is.null(test_data) && nrow(test_data) > 0) current_plot_data_dates <- c(current_plot_data_dates, test_data$ds)
+        if (length(forecast_list) > 0) {
+          for(fcst_df_item in forecast_list) {
+            if (!is.null(fcst_df_item) && nrow(fcst_df_item) > 0 && "ds" %in% names(fcst_df_item)) {
+              current_plot_data_dates <- c(current_plot_data_dates, fcst_df_item$ds)
+            }
+          }
+        }
+        current_plot_data_dates <- unique(as.Date(current_plot_data_dates))
+        
+        holidays_in_range <- processed_holidays
+        if (length(current_plot_data_dates) > 0) {
+          min_date <- min(current_plot_data_dates, na.rm = TRUE)
+          max_date <- max(current_plot_data_dates, na.rm = TRUE)
+          if (!is.na(min_date) && !is.na(max_date)) {
+            holidays_in_range <- processed_holidays %>%
+              dplyr::filter(ds >= min_date & ds <= max_date)
+          }
+        }
+        
         if (nrow(holidays_in_range) > 0) {
           shapes_list <- list()
           for (i in 1:nrow(holidays_in_range)) {
             h_date <- holidays_in_range$ds[i]
-            h_name <- holidays_in_range$holiday[i] %||% as.character(h_date) # Usar nombre del feriado o fecha
-
             shapes_list[[i]] <- list(
               type = "line",
               x0 = h_date, x1 = h_date,
-              y0 = 0, y1 = 1, yref = "paper", # Línea vertical completa
-              line = list(color = "rgba(128, 128, 128, 0.5)", width = 1, dash = "dot"), # Gris punteado semitransparente
-              name = h_name # El nombre no se muestra directamente en la leyenda de shapes, pero es útil para hover
+              y0 = 0, y1 = 1, yref = "paper",
+              line = list(color = "rgba(180, 180, 180, 0.6)", width = 1, dash = "dashdot")
             )
           }
           p <- p %>% layout(shapes = shapes_list)
-
-          # Opcional: Añadir un trace invisible para hover y posible leyenda (más complejo)
+          
           p <- p %>% add_trace(
             data = holidays_in_range,
             x = ~ds,
-            y = Inf, # Posicionar fuera de la vista o en un eje secundario
-            type = 'scatter', mode = 'markers',
-            marker = list(opacity = 0), # Invisible
-            text = ~holiday, # Texto para hover
+            y = 1, # Position at the top of the plot
+            yref = "paper", # Relative to the plot paper
+            type = 'scatter', 
+            mode = 'markers',
+            marker = list(opacity = 0.001, size = 10), # Effectively invisible but hoverable
+            text = ~paste(holiday, "<br>", ds), # Hover text: holiday name and date
             hoverinfo = "text",
-            name = "Holidays", # Para leyenda
-            showlegend = TRUE # Opcional
+            name = "Holidays", # Name for the legend
+            showlegend = TRUE
           )
         }
       }
+      # --- End Global Holidays Display ---
 
-
-      p # Return the plot object
-      #
-      #
-      #
-      #
-      #
-      # # validate(
-      # #   need(is.data.frame(train_data) && nrow(train_data) > 0 && all(c("ds", "y") %in% names(train_data)),
-      # #        "Valid training data is required."),
-      # #   need(is.data.frame(test_data) && all(c("ds", "y") %in% names(test_data)), # Test data can be empty
-      # #        "Test data input seems invalid.")
-      # #   # We don't validate forecast_data here, as it might legitimately be NULL before forecasting
-      # # )
-      # # validate(need(!is.null(forecast_data) || nrow(test_data)>0, "No forecast or test data to plot after training data."))
-      # # p <- plot_ly() # Start base plot
-      # #
-      # # # Base plot
-      # # p <- plot_ly() %>%
-      # #   layout(
-      # #     title = "Forecast vs Actuals",
-      # #     yaxis = list(title = "Value"),
-      # #     xaxis = list(title = "Date", rangeslider = list(visible=TRUE)),
-      # #     legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.1),
-      # #     hovermode = "x unified"
-      # #   )
-      # #
-      # #
-      # # # Add Training Data Trace
-      # # p <- p %>% add_trace(data = train_data, x = ~ds, y = ~y,
-      # #                      type = 'scatter', mode = 'lines',
-      # #                      line = list(color = 'black'),
-      # #                      name = 'Actual (Train)')
-      # #
-      # # # Add Test Data Trace (if it exists)
-      # # if (nrow(test_data) > 0) {
-      # #   p <- p %>% add_trace(data = test_data, x = ~ds, y = ~y,
-      # #                        type = 'scatter', mode = 'lines',
-      # #                        line = list(color = 'grey', dash = 'dash'),
-      # #                        name = 'Actual (Test)')
-      # # }
-      # #
-      # # # Process Forecast Data (Line + CI Lines)
-      # # if (!is.null(forecast_data) && nrow(forecast_data) > 0 ) {
-      # #
-      # #   # Add Forecast Line (yhat)
-      # #   if(is.numeric(forecast_data$yhat) && !all(is.na(forecast_data$yhat))){
-      # #     p <- p %>% add_trace(data = forecast_data, x = ~ds, y = ~yhat,
-      # #                          type = 'scatter', mode = 'lines',
-      # #                          line = list(color = '#1f77b4'), # Plotly blue
-      # #                          name = 'Forecast', # Main name for legend
-      # #                          legendgroup = 'forecast_group' # Assign a legend group
-      # #     )
-      # #     message("Plotting: Added Forecast line trace.")
-      # #   } else { warning("Forecast yhat invalid.") }
-      # #
-      # #
-      # #   # --- WORKAROUND: Add CI using add_lines ---
-      # #   has_ci_95 <- all(c("yhat_lower_95", "yhat_upper_95") %in% names(forecast_data))
-      # #   ci_data_valid <- FALSE
-      # #   if (has_ci_95) {
-      # #     lower_ok <- is.numeric(forecast_data$yhat_lower_95) && !all(is.na(forecast_data$yhat_lower_95))
-      # #     upper_ok <- is.numeric(forecast_data$yhat_upper_95) && !all(is.na(forecast_data$yhat_upper_95))
-      # #     if (lower_ok && upper_ok) { ci_data_valid <- TRUE; message("Plotting: Valid CI data found for lines.") }
-      # #     else { message("Plotting: CI columns non-numeric/all NAs. Skipping CI lines.") }
-      # #   } else { message("Plotting: CI columns not found. Skipping CI lines.") }
-      # #
-      # #   if(ci_data_valid) {
-      # #     message("Plotting: Attempting to add CI lines...")
-      # #     # Add Lower Bound Line
-      # #     p <- p %>% add_lines(data = forecast_data, x = ~ds, y = ~yhat_lower_95,
-      # #                          line = list(color = '#1f77b4', width = 1, dash = 'dash'), # Dashed, same color family or grey
-      # #                          legendgroup = 'forecast_group', # Same group as forecast line
-      # #                          showlegend = FALSE, # Hide from legend
-      # #                          name = 'Lower 95% CI' # Name appears on hover
-      # #                          # hoverinfo = 'skip' # Optional: disable hover
-      # #     )
-      # #     # Add Upper Bound Line
-      # #     p <- p %>% add_lines(data = forecast_data, x = ~ds, y = ~yhat_upper_95,
-      # #                          line = list(color = '#1f77b4', width = 1, dash = 'dash'),
-      # #                          legendgroup = 'forecast_group',
-      # #                          showlegend = FALSE,
-      # #                          name = 'Upper 95% CI'
-      # #                          # hoverinfo = 'skip'
-      # #     )
-      # #     message("Plotting: add_lines for CI completed.")
-      # #   }
-      # #   # --- END WORKAROUND ---
-      # #
-      # # } # End if forecast_data exists
-      #
-      # # Add Forecast Trace (IF forecast_data exists and is valid)
-      # # if (!is.null(forecast_data) && nrow(forecast_data) > 0 ) {
-      # #   if(is.numeric(forecast_data$yhat) && !all(is.na(forecast_data$yhat))){
-      # #     p <- p %>% add_trace(data = forecast_data, x = ~ds, y = ~yhat, type = 'scatter', mode = 'lines',
-      # #                          line = list(color = '#1f77b4'), name = 'Forecast')
-      # #     message("Plotting: Added Forecast line trace.")
-      # #   } else {
-      # #     warning("Forecast yhat column is non-numeric or all NA.")
-      # #   }
-      #
-      #   # --- TEMPORARILY COMMENT OUT RIBBON LOGIC ---
-      #   # has_ci_95 <- all(c("yhat_lower_95", "yhat_upper_95") %in% names(forecast_data))
-      #   # ci_data_valid <- FALSE
-      #   # if (has_ci_95) { ... check NAs ... }
-      #   # message(...) # Keep message check if you want
-      #   # if(ci_data_valid) {
-      #   #     # p <- p %>% add_ribbons(...) # COMMENTED OUT
-      #   # }
-      #
-      #   # has_ci_95 <- all(c("yhat_lower_95", "yhat_upper_95") %in% names(forecast_data))
-      #   # ci_data_valid <- FALSE
-      #   # if (has_ci_95) {
-      #   #   lower_ok <- is.numeric(forecast_data$yhat_lower_95) && !all(is.na(forecast_data$yhat_lower_95))
-      #   #   upper_ok <- is.numeric(forecast_data$yhat_upper_95) && !all(is.na(forecast_data$yhat_upper_95))
-      #   #   if (lower_ok && upper_ok) { ci_data_valid <- TRUE; message("Plotting: Valid CI data found for ribbons.") }
-      #   #   else { message("Plotting: CI columns exist but non-numeric/all NAs. Skipping ribbons.") }
-      #   # } else { message("Plotting: CI columns not found. Skipping ribbons.") }
-      #   #
-      #   #
-      #   # # --- END COMMENT OUT ---
-      #   # # Add Ribbons if valid
-      #   # if(ci_data_valid) {
-      #   #   message("Plotting: Attempting to add ribbons...")
-      #   #   p <- p %>% add_ribbons(data = forecast_data, x = ~ds, name = '95% Interval', # name here links ribbon to legend
-      #   #                          ymin = ~yhat_lower_95, ymax = ~yhat_upper_95,
-      #   #                          line = list(color = 'transparent'),
-      #   #                          # Match forecast line color but lighter alpha
-      #   #                          fillcolor = 'rgba(31, 119, 180, 0.2)',
-      #   #                          hoverinfo = 'skip',
-      #   #                          legendgroup = 'forecast', # Group ribbon with line maybe?
-      #   #                          showlegend = FALSE # Don't show separate legend item for ribbon fill
-      #   #   )
-      #   #   message("Plotting: add_ribbons call completed.")
-      #   # }
-      #
-      # # Add Forecast Trace(s) and Confidence Intervals (if forecast_data exists)
-      # # if (!is.null(forecast_data) && is.data.frame(forecast_data) && nrow(forecast_data) > 0) {
-      # #
-      # #   validate(
-      # #     need(all(c("ds", "yhat") %in% names(forecast_data)),
-      # #          "Forecast data must contain 'ds' and 'yhat' columns.")
-      # #   )
-      # #
-      # #   # Check for standard 95% CI column names (adapt if needed for different models)
-      # #   has_ci_95 <- all(c("yhat_lower_95", "yhat_upper_95") %in% names(forecast_data))
-      # #   # --- ADD CHECK for valid numeric CI data ---
-      # #   ci_data_valid <- FALSE
-      # #   if (has_ci_95) {
-      # #     # Check if BOTH lower and upper bounds are numeric and have at least one non-NA value
-      # #     lower_ok <- is.numeric(forecast_data$yhat_lower_95) && !all(is.na(forecast_data$yhat_lower_95))
-      # #     upper_ok <- is.numeric(forecast_data$yhat_upper_95) && !all(is.na(forecast_data$yhat_upper_95))
-      # #     if (lower_ok && upper_ok) {
-      # #       ci_data_valid <- TRUE
-      # #       message("Plotting: Valid CI data found for ribbons.")
-      # #     } else {
-      # #       message("Plotting: CI columns exist but are non-numeric or contain all NAs. Skipping ribbons.")
-      # #     }
-      # #   } else {
-      # #     message("Plotting: CI columns not found. Skipping ribbons.")
-      # #   }
-      # #   # --- END CHECK ---
-      # #
-      # #   # Add Ribbons only if columns exist AND data is valid numeric with non-NAs
-      # #   if(ci_data_valid) {
-      # #     p <- p %>% add_ribbons(data = forecast_data, x = ~ds, name = '95% Interval', # Ensure name set
-      # #                            ymin = ~yhat_lower_95, ymax = ~yhat_upper_95,
-      # #                            line = list(color = 'transparent'), fillcolor = 'rgba(31, 119, 180, 0.2)', # Use same family blue
-      # #                            hoverinfo = 'skip' # Don't show ribbon hover usually
-      # #     ) %>%
-      # #       layout(showlegend = TRUE) # Ensure legend shows maybe? Or control manually.
-      # #   } # We removed the else if for prophet CIs, restore if needed or integrate check
-      # #
-      # #   # Check for prophet default CI names
-      # #   has_ci_prophet <- all(c("yhat_lower", "yhat_upper") %in% names(forecast_data))
-      # #
-      # #   # Add Ribbons first (if available) - Plotly adds layers sequentially
-      # #   # if(has_ci_95) {
-      # #   #   p <- p %>% add_ribbons(data = forecast_data, x = ~ds,
-      # #   #                          ymin = ~yhat_lower_95, ymax = ~yhat_upper_95,
-      # #   #                          line = list(color = 'transparent'), # No border line for ribbon
-      # #   #                          fillcolor = 'rgba(0, 100, 255, 0.2)', # Light blue fill
-      # #   #                          name = '95% Confidence Interval')
-      # #   # } else if (has_ci_prophet) {
-      # #   if (has_ci_prophet) {
-      # #     # Handle Prophet's default names if 95% names aren't present
-      # #     p <- p %>% add_ribbons(data = forecast_data, x = ~ds,
-      # #                            ymin = ~yhat_lower, ymax = ~yhat_upper,
-      # #                            line = list(color = 'transparent'),
-      # #                            fillcolor = 'rgba(0, 100, 255, 0.2)',
-      # #                            name = 'Confidence Interval') # Generic name if level unknown
-      # #   }
-      # #   # Add Forecast Line (ensure yhat is valid too)
-      # #   if(is.numeric(forecast_data$yhat) && !all(is.na(forecast_data$yhat))){
-      # #     p <- p %>% add_trace(data = forecast_data, x = ~ds, y = ~yhat, type = 'scatter', mode = 'lines',
-      # #                          line = list(color = '#1f77b4'), name = 'Forecast') # Match ribbon family blue
-      # #   } else {
-      # #     warning("Forecast yhat column is non-numeric or all NA. Cannot plot forecast line.")
-      # #   }
-      # #
-      # #
-      # #   # Add Forecast Line (yhat)
-      # #   # p <- p %>% add_trace(data = forecast_data, x = ~ds, y = ~yhat,
-      # #   #                      type = 'scatter', mode = 'lines',
-      # #   #                      line = list(color = '#1f77b4'), # Plotly blue
-      # #   #                      name = 'Forecast')
-      # #
-      # #
-      # # } else {
-      # #   # Maybe add a note if forecast isn't ready? Or just show historical.
-      # #   # p <- p %>% layout(annotations = list(list(text = "Run forecast to see predictions", showarrow=FALSE)))
-      # #
-      # # }
-      # # Final layout adjustments
-      # # p <- p %>% layout(legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.1)) # Ensure legend is positioned
-      # # Final layout adjustments
-      # # } # End if forecast_data exists
-      #
-      # p <- p %>% layout(
-      #   title = "Forecast vs Actuals",
-      #   xaxis = list(title="Date", rangeslider = list(visible=TRUE)),
-      #   yaxis = list(title = "Value"),
-      #   legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.1),
-      #   hovermode = "x unified"
-      # )
-      #
-      # p # Return the plot object
+      p # Return the plotly object
     })
 
+    # Render the plot to the UI output
+    output$forecastPlot <- plotly::renderPlotly({
+      reactive_plot_object()
+    })
+
+    # # Return the reactive plot object for potential use elsewhere (e.g., download)
+    # return(reactive_plot_object)
   })
 }

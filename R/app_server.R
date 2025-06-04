@@ -3,6 +3,7 @@
 #' The application server-side
 #' @param input,output,session Internal parameters for {shiny}. DO NOT REMOVE.
 #' @import shiny dplyr tibble forecast parsnip workflows tune dials rsample yardstick timetk recipes slider
+#' @import shiny.i18n
 #' @importFrom shinyjs reset
 #' @importFrom RColorBrewer brewer.pal
 #' @importFrom stats predict 
@@ -12,7 +13,74 @@
 # Needed for forecast() call inside observeEvent
 # Add other necessary imports if functions are called directly here
 #' @noRd
+
+# --- Internationalization Setup ---
+i18n <- Translator$new(translation_json_path = app_sys("i18n",'translation.json'))
+i18n$set_translation_language('en')
+
 app_server <- function(input, output, session) {
+  # --- Language Selector Observer ---
+  # observeEvent(input$selected_language, {
+  #   req(input$selected_language)
+  #   # req(input$selected_language)
+  #   # Update the translator's language
+  #   update_lang(shiny::session, input$selected_language)
+  #   # The renderText functions below will react to this change.
+  #   # i18n$set_translation_language(input$selected_language)
+  #   # session$reload() # Recarga la sesión para aplicar cambios, a veces necesario
+  # })
+  
+
+  # --- Reactive UI Translations ---
+  # output$ui_page_title <- renderUI({ i18n$t("Vaccine Forecasting App") })
+  # output$ui_nav_data <- renderText({ i18n$t("Data")})
+  # output$ui_nav_model <- renderText({ i18n$t("Model") })
+  # output$ui_nav_forecast_results <- renderText({ i18n$t("Forecast results") })
+  # output$ui_nav_validation <- renderText({ i18n$t("Validation") })
+  # output$ui_nav_about <- renderText({  i18n$t("About") })
+  observeEvent(input$selected_language, {
+    req(input$selected_language)
+    # Update the translator's language
+    i18n$set_translation_language(input$selected_language)
+    # Update the UI elements with the new translations
+    output$ui_page_title <- renderUI({ i18n$t("Vaccine Forecasting App") })
+    output$ui_nav_data <- renderText({ i18n$t("Data")})
+    output$ui_sidebar_data<- renderText({ i18n$t("Data Input") })
+    output$ui_accordion_preprocess <- renderText({ i18n$t("Preprocessing & Split") })
+    output$ui_aggregation_level <- renderText({ i18n$t("Aggregation Level") })
+    output$ui_aggregation_level_daily <- renderText({ i18n$t("Daily") })
+    output$ui_aggregation_level_weekly <- renderText({ i18n$t("Weekly") })
+    output$ui_aggregation_level_weekly_mean <- renderText({ i18n$t("mean") })
+    output$ui_aggregation_level_weekly_sum <- renderText({ i18n$t("sum") })
+    output$ui_train_set_percentage <- renderText({ i18n$t("Train Set Percentage") })  
+    output$ui_time_series_decomposition <- renderText({ i18n$t("Time Series Decomposition") })  
+    output$ui_model_summary <- renderText({ i18n$t("Model Summary") })
+    output$ui_csv_file_upload <- renderText({ i18n$t("Choose CSV or Excel File") })
+    output$ui_choose_default_dataset <- renderText({ i18n$t("Choose Default Dataset") })
+    output$ui_load_default_dataset <- renderText({ i18n$t("Load Selected Default Dataset") })
+    output$ui_select_columns <- renderText({ i18n$t("Select Columns") })
+    output$ui_preview <- renderText({ i18n$t("Preview") })
+    output$ui_select_date_col <- renderText({ i18n$t("Select Date Column") })
+    output$ui_select_value_col <- renderText({ i18n$t("Select Value Column") })
+    output$ui_load_holidays <- renderText({ i18n$t("Load Holidays (Optional)") })
+    output$ui_load_holidays_default <- renderText({ i18n$t("Load Default Holidays") })
+    output$ui_upload_global_holidays <- renderText({ i18n$t("Upload Global Holidays File (CSV: ds, holiday)") })
+    output$ui_nav_model <- renderText({ i18n$t("Model") })
+    output$ui_nav_forecast_results <- renderText({ i18n$t("Forecast results") })
+    output$ui_visualizations <- renderText({ i18n$t("Visualizations") })
+    output$ui_nav_validation <- renderText({ i18n$t("Validation") })
+    output$ui_nav_about <- renderText({  i18n$t("About") })
+    
+  })
+
+  # Note: The "Language:" label for selectInput is not translated for now as per plan.
+  # Update the language selector choices dynamically
+  # observe({
+  #   updateSelectInput(session, "selected_language",
+  #                     choices = i18n$get_languages(),
+  #                     selected = i18n$get_key_translation()
+  #                     )
+  # })
 
   # --- Reactive Values Store ---
   r <- reactiveValues(
@@ -50,9 +118,10 @@ app_server <- function(input, output, session) {
     "results_plot_1",
     reactive_train_df = preprocess_reactives$reactive_train_df,
     reactive_test_df = preprocess_reactives$reactive_test_df,
-    # reactive_forecast_df = reactive({ r$forecast_df }) # Use forecast_df for plot
-    reactive_forecast_list = eventReactive(r$run_id, { r$forecast_list }) # Pass the list of forecast tibbles, triggered by run_id
-  )
+    reactive_forecast_list = eventReactive(r$run_id, { r$forecast_list }), # Pass the list of forecast tibbles, triggered by run_id
+    reactive_global_holidays_data = r$global_holidays_data # Pass the reactiveVal directly
+  ) -> plot_obj_reactive # Capture the returned reactive plot object
+
   # mod_model_summary_server(
   #   "model_summary_1",
   #   reactive_model_name = reactive({ r$model_name }), # Pass reactive model name
@@ -75,7 +144,7 @@ app_server <- function(input, output, session) {
   mod_results_table_server(
     "results_table_1",
     reactive_metrics_summary = reactive({ r$metrics_summary })
-  )
+  ) -> metrics_df_reactive # Capture the returned reactive metrics data frame
 
   # mod_extra_plots_server(
   #   "extra_plots_1",
@@ -106,44 +175,48 @@ app_server <- function(input, output, session) {
   # Define the steps for the introduction tour
   tour_steps <- reactive({
     data.frame(
-      # Use CSS selectors targeting the namespaced IDs
       element = c(
-        "#data_input_1-fileUpload-label",      # Use the actual fileInput ID
-        "#data_input_1-dateCol-label",        # Target date column selector
-        # Maybe target the div containing preprocess controls? Or specific control
-        "#preprocess_controls_1-aggregationLevel-label",
+        "a[role='tab'][data-value='Data']",
+        "label[for='data_input_1-fileUpload']",
+        "label[for='data_input_1-dateCol']",
+        "label[for='data_input_1-valueCol']",
+        "label[for='preprocess_controls_1-aggregationLevel']",
         "#preprocess_controls_1-trainTestSplit",
-        # Target the actual tabsetPanel container
-        # Note: Might need to inspect element in browser to confirm the exact ID renderered
-        # Usually it's the ID passed to tabsetPanel + "-pane-" + tab value,
-        # but targeting the overall container '#model_config_1-modelTabs' might be safer
-        "#model_config_1-modelTabs",
-        "#model_config_1-forecastHorizon",
+        "#load_default_holidays", # For the button next to global holiday upload
+        "a[role='tab'][data-value='Model']",
+        "label[for='model_config_1-use_arima']", # Or a general selector for the model selection area
+        "#model_config_1-modelParamsAccordion",
+        "label[for='model_config_1-forecastHorizon']",
         "#model_config_1-runForecast",
-        "#results_plot_1-forecastPlot",  # Plot output area
-        "#results_table_1-metricsTable" # Metrics table output area
+        "a[role='tab'][data-value='Forecast results']",
+        "#results_plot_1-forecastPlot",
+        "#results_table_1-metricsTable", # Assuming this ID exists for the DTOutput wrapper
+        "a[role='tab'][data-value='Validation']",
+        "a[role='tab'][data-value='About']"
       ),
       intro = c(
-        "Welcome! Start by uploading your time series data here (CSV or Excel).",
-        "Once uploaded, select the columns containing your dates and values.",
-        "Choose how to aggregate your data (Daily/Weekly) and how to aggregate if Weekly.",
-        "Select the percentage of data to use for training the model.",
-        "Configure the parameters for the desired forecast model (ARIMA, Prophet, or XGBoost) using these tabs.",
-        "Set how many periods (days/weeks) you want to forecast into the future.",
-        "Click here to train the selected model and generate the forecast based on your configuration.",
-        "The forecast results will be plotted here against the historical data.",
-        "Performance metrics (MAE, RMSE, MAPE) for the model fit will be displayed here."
+        "Start here: Upload and define your time series data in the Data panel.",
+        "Click to upload your time series data from a CSV or Excel file.",
+        "After uploading, select the column from your file that contains the dates.",
+        "Then, select the column that contains the numerical values you want to forecast.",
+        "Choose how your data should be aggregated (e.g., Daily, Weekly) and the function to use (e.g., sum, mean).",
+        "Adjust the slider to define the percentage of data used for training the model; the remainder will be used for testing.",
+        "Optionally, upload a CSV file with global holidays (columns: ds, holiday) or load a default set. Models like Prophet can use this information.",
+        "Move to the Model panel to select and configure your forecasting models.",
+        "Select one or more forecasting models (e.g., ARIMA, ETS, Prophet) from the checklist. You can run multiple models simultaneously.",
+        "For each model you select, expand its section in this accordion to configure its specific parameters.",
+        "Set the number of future periods (days or weeks, depending on your aggregation level) you want to forecast.",
+        "Once configured, click this button to train all selected models and generate the forecasts.",
+        "View the outcomes of your forecasts in the Forecast Results panel.",
+        "This plot displays the historical data (training and testing sets) and the forecasts from all selected models.",
+        "This table shows performance metrics (like MAE, RMSE, MAPE) for each model, comparing their accuracy.",
+        "Go to the Validation panel to perform time series cross-validation on your chosen models to further assess their robustness.",
+        "Find out more about this application, its features, and developer information in the About panel."
       ),
-      position = c( # Optional: Suggest positions for the tooltips
-        "bottom",
-        "bottom",
-        "bottom",
-        "bottom",
-        "bottom",
-        "right",
-        "right",
-        "top",
-        "top"
+      position = c(
+        "bottom", "bottom", "bottom", "bottom", "bottom", "bottom", "bottom",
+        "bottom", "right", "bottom", "right", "right", # 'right' for sidebar items in model config
+        "bottom", "top", "top", "bottom", "bottom"
       )
     )
   })
@@ -1131,6 +1204,13 @@ app_server <- function(input, output, session) {
               print(e)
               print("--- End Error Object (Individual Model) ---")
 
+              if (model_name == "GAM") {
+                message("--- DETAILED GAM ERROR in app_server ---")
+                print(e) # Print the full error object 'e'
+                message(paste("GAM error conditionMessage:", conditionMessage(e)))
+                message(paste("GAM error conditionCall:", conditionCall(e)))
+                message("--- END DETAILED GAM ERROR ---")
+              }
 
           }) # End inner tryCatch
 
@@ -1454,7 +1534,16 @@ app_server <- function(input, output, session) {
         rf_enable_tuning = if (is.function(model_config_reactives$rf_enable_tuning)) model_config_reactives$rf_enable_tuning() else NULL,
         rf_num_trees = if (is.function(model_config_reactives$rf_num_trees)) model_config_reactives$rf_num_trees() else NULL, 
         rf_mtry = if (is.function(model_config_reactives$rf_mtry)) model_config_reactives$rf_mtry() else NULL, 
-        rf_min_node_size = if (is.function(model_config_reactives$rf_min_node_size)) model_config_reactives$rf_min_node_size() else NULL
+        rf_min_node_size = if (is.function(model_config_reactives$rf_min_node_size)) model_config_reactives$rf_min_node_size() else NULL,
+        # NNETAR
+        use_nnetar = if (is.function(model_config_reactives$use_nnetar)) model_config_reactives$use_nnetar() else NULL,
+        nnetar_p = if (is.function(model_config_reactives$nnetar_p)) model_config_reactives$nnetar_p() else NULL,
+        nnetar_P = if (is.function(model_config_reactives$nnetar_P)) model_config_reactives$nnetar_P() else NULL,
+        nnetar_size_method = if (is.function(model_config_reactives$nnetar_size_method)) model_config_reactives$nnetar_size_method() else NULL,
+        nnetar_size_manual = if (is.function(model_config_reactives$nnetar_size_manual)) model_config_reactives$nnetar_size_manual() else NULL,
+        nnetar_repeats = if (is.function(model_config_reactives$nnetar_repeats)) model_config_reactives$nnetar_repeats() else NULL,
+        nnetar_lambda_auto = if (is.function(model_config_reactives$nnetar_lambda_auto)) model_config_reactives$nnetar_lambda_auto() else NULL,
+        nnetar_lambda_manual = if (is.function(model_config_reactives$nnetar_lambda_manual)) model_config_reactives$nnetar_lambda_manual() else NULL
       )
       
       # Include original filename of global holidays file, if it was uploaded
@@ -1480,7 +1569,7 @@ app_server <- function(input, output, session) {
       tryCatch({
         saveRDS(session_state_to_save, file = file)
         shiny::removeModal()
-        shiny::showNotification(paste("Session saved to", basename(file)), type = "success", duration = 5)
+        shiny::showNotification(paste("Session saved to", basename(file)), type = "message", duration = 5)
       }, error = function(e_save) {
         shiny::showNotification(paste("Error saving session:", e_save$message), type = "error", duration = 10)
       })
@@ -1547,6 +1636,7 @@ app_server <- function(input, output, session) {
         updateCheckboxInput(session, "model_config_1-use_xgboost", value = mcsv$use_xgboost)
         updateCheckboxInput(session, "model_config_1-use_gam", value = mcsv$use_gam)
         updateCheckboxInput(session, "model_config_1-use_rf", value = mcsv$use_rf)
+        updateCheckboxInput(session, "model_config_1-use_nnetar", value = mcsv$use_nnetar %||% FALSE) # Handle potential NULL
 
         # ARIMA params
         updateCheckboxInput(session, "model_config_1-arima_auto", value = mcsv$arima_auto)
@@ -1595,6 +1685,15 @@ app_server <- function(input, output, session) {
         updateNumericInput(session, "model_config_1-rf_num_trees", value = mcsv$rf_num_trees)
         updateNumericInput(session, "model_config_1-rf_mtry", value = mcsv$rf_mtry)
         updateNumericInput(session, "model_config_1-rf_min_node_size", value = mcsv$rf_min_node_size)
+        
+        # NNETAR params
+        updateNumericInput(session, "model_config_1-nnetar_p", value = mcsv$nnetar_p)
+        updateNumericInput(session, "model_config_1-nnetar_P", value = mcsv$nnetar_P)
+        updateSelectInput(session, "model_config_1-nnetar_size_method", selected = mcsv$nnetar_size_method)
+        updateNumericInput(session, "model_config_1-nnetar_size_manual", value = mcsv$nnetar_size_manual)
+        updateNumericInput(session, "model_config_1-nnetar_repeats", value = mcsv$nnetar_repeats)
+        updateCheckboxInput(session, "model_config_1-nnetar_lambda_auto", value = mcsv$nnetar_lambda_auto %||% TRUE) # Default to TRUE if NULL
+        updateNumericInput(session, "model_config_1-nnetar_lambda_manual", value = mcsv$nnetar_lambda_manual)
       }
 
       # Restore Data Input State (partially - file name, selectInputs might be tricky)
@@ -1623,7 +1722,24 @@ app_server <- function(input, output, session) {
 
       removeModal()
       shiny::removeNotification(id = "loading_session_notif")
-      shiny::showNotification("Session loaded successfully! Please re-upload data and holiday files if they were part of the saved session.", type = "message", duration = 10)
+      
+      # Trigger update for eventReactives depending on r$run_id
+      if (!is.null(r$run_id) && r$run_id > 0) {
+        r$run_id <- r$run_id + 0.0001 
+      }
+      
+      # Construct the notification message
+      data_file_msg <- if (!is.null(r$loaded_session_data_file_name)) paste0("main data file ('", r$loaded_session_data_file_name, "')") else "main data file"
+      holidays_file_msg <- if (!is.null(r$loaded_session_holiday_file_name)) paste0("global holidays file ('", r$loaded_session_holiday_file_name, "')") else "global holidays file"
+      
+      full_notification_msg <- paste0(
+        "Session loaded successfully! Please re-upload your ",
+        data_file_msg, 
+        " and ",
+        holidays_file_msg,
+        " if they were part of the saved session."
+      )
+      shiny::showNotification(full_notification_msg, type = "message", duration = 15) # Increased duration
       
       # Trigger an update for plots/tables if r$run_id was restored to a value > 0
       # This ensures that if a forecast was part of the saved state, it attempts to re-render.
@@ -1647,289 +1763,236 @@ app_server <- function(input, output, session) {
   })
   # --- End Load Session Logic ---
 
-  # --- Validation Section Server Logic ---
-  output$cv_model_selector_ui <- renderUI({
-    req(r$run_models_summary)
-    model_names <- names(r$run_models_summary)
-    req(length(model_names) > 0)
-    checkboxGroupInput("cv_model_selection_input", "Select Models for CV:", 
-                       choices = model_names, selected = model_names)
-  })
+  # --- Validation Module Server Call ---
+  mod_validation_server(
+    "validation_1",
+    reactive_run_models_summary = reactive({ r$run_models_summary }),
+    reactive_train_df = preprocess_reactives$reactive_train_df, 
+    reactive_agg_level = preprocess_reactives$reactive_agg_level, 
+    reactive_global_holidays_data = r$global_holidays_data 
+  )
+  # --- End Validation Module Server Call ---
 
-  observeEvent(input$run_cv_button, {
-    # Get Inputs
-    selected_cv_models <- input$cv_model_selection_input
-    initial_window_periods <- input$cv_initial_window
-    horizon_periods <- input$cv_horizon
-    skip_periods <- input$cv_skip
-    is_cumulative <- input$cv_cumulative
-    full_train_data <- preprocess_reactives$reactive_train_df() # Using the full training set for CV
-    agg_level <- preprocess_reactives$reactive_agg_level()
-    freq_str_cv <- if (agg_level == "Daily") "day" else "week"
-    current_global_holidays_cv <- r$global_holidays_data() # Get global holidays
-
-    # Validations
-    req(full_train_data)
-    validate(
-      need(nrow(full_train_data) > (initial_window_periods + horizon_periods), 
-           "Not enough data for the specified initial window and horizon. Please adjust CV parameters or use a larger dataset.")
-    )
-    validate(
-      need(length(selected_cv_models) > 0, "Please select at least one model for Cross-Validation.")
-    )
-
-    # Time Series CV Splits
-    ts_cv_splits <- timetk::time_series_cv(
-      data = full_train_data,
-      date_var = ds,
-      initial = paste(initial_window_periods, freq_str_cv),
-      assess = paste(horizon_periods, freq_str_cv),
-      skip = paste(skip_periods, freq_str_cv),
-      cumulative = is_cumulative,
-      slice_limit = 10 # Default slice limit
-    )
-    
-    message(paste("Number of CV slices generated:", nrow(ts_cv_splits)))
-    validate(need(nrow(ts_cv_splits) > 0, "Time series CV split generation resulted in 0 slices. Adjust parameters (e.g., reduce initial window, horizon, or skip)."))
-
-    # Progress Indicator & Results Storage
-    all_cv_metrics <- list() # To store metrics from each fold for each model
-    
-    # Initialize reactive value for CV results if it doesn't exist
-    if (is.null(r$cv_results_data)) {
-      r$cv_results_data <- reactiveVal(NULL)
-    }
-    if (is.null(r$cv_raw_metrics_list)) {
-      r$cv_raw_metrics_list <- reactiveVal(NULL) # For storing raw metrics for plotting
-    }
-
-
-    shiny::withProgress(message = 'Running Cross-Validation...', value = 0, {
-      n_total_iterations <- length(selected_cv_models) * nrow(ts_cv_splits)
-      progress_counter <- 0 # Renamed to avoid conflict with shiny::incProgress internal counter
-
-      for (model_name_cv in selected_cv_models) {
-        # shiny::incProgress(amount = 1/length(selected_cv_models), detail = paste("Cross-validating Model:", model_name_cv)) # This was outer loop progress
+  # --- Report Generation Download Handler ---
+  output$downloadReport <- downloadHandler(
+    filename = function() {
+      paste0("forecast_report_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".", input$reportFormat)
+    },
+    content = function(file) {
+      shiny::withProgress(message = paste("Generating", toupper(input$reportFormat), "report..."), value = 0, {
         
-        model_config_original <- r$run_models_summary[[model_name_cv]]$config
-        original_agg_level <- r$run_models_summary[[model_name_cv]]$aggregation_level # Should be same as current agg_level
-        # original_freq_used_for_summary <- r$run_models_summary[[model_name_cv]]$frequency_used # Not directly used here but good to have
-
-        unprepared_recipe_cv <- NULL
-        if (model_name_cv %in% c("XGBoost", "RF")) {
-          unprepared_recipe_cv <- create_tree_recipe(full_train_data, freq_str = freq_str_cv) 
-        }
-
-        for (i in 1:nrow(ts_cv_splits)) {
-          progress_counter <- progress_counter + 1
-          shiny::setProgress(value = progress_counter / n_total_iterations, # Use setProgress with overall progress
-                             detail = paste("Model:", model_name_cv, "- Slice", i, "of", nrow(ts_cv_splits)))
-          
-          # Skip CV for NNETAR if its tuning is enabled (hypothetical example, NNETAR tuning not implemented)
-          # if (model_name_cv == "NNETAR" && isTRUE(model_config_original$enable_tuning %||% FALSE)) {
-          #    message(paste("Skipping CV for NNETAR as tuning enabled and CV for tuned NNETAR not implemented."))
-          #    # progress_counter is already incremented, shiny::setProgress handles overall progress
-          #    next # Skip to next slice or model
-          # }
-
-          slice <- ts_cv_splits[i, ]
-          train_slice <- timetk::analysis(slice)
-          assess_slice <- timetk::assessment(slice)
-          
-          train_slice <- train_slice %>% dplyr::mutate(ds = as.Date(ds), y = as.numeric(y))
-          assess_slice <- assess_slice %>% dplyr::mutate(ds = as.Date(ds), y = as.numeric(y))
-
-          last_train_slice_date <- max(train_slice$ds)
-          horizon_cv_fold <- nrow(assess_slice)
-
-          forecast_tibble_cv <- NULL
-          # fitted_values_cv <- NULL # Not strictly needed for CV accuracy
-
-          tryCatch({
-            if (model_name_cv == "ARIMA") {
-              holidays_for_train_slice <- NULL
-              if (!is.null(current_global_holidays_cv) && nrow(current_global_holidays_cv) > 0) {
-                  holidays_for_train_slice <- current_global_holidays_cv %>% 
-                      dplyr::filter(ds >= min(train_slice$ds) & ds <= max(train_slice$ds))
-              }
-              model_obj_cv <- train_arima(train_slice, model_config_original, aggregation_level = original_agg_level, holidays_df = holidays_for_train_slice)
-              if (!is.null(model_obj_cv)) {
-                future_xreg_cv <- NULL
-                if (!is.null(model_obj_cv$xreg)) {
-                  arima_xreg_colnames_cv <- colnames(model_obj_cv$xreg)
-                  holidays_for_assess_slice <- NULL
-                  if (!is.null(current_global_holidays_cv) && nrow(current_global_holidays_cv) > 0) {
-                       holidays_for_assess_slice <- current_global_holidays_cv %>% 
-                          dplyr::filter(ds >= min(assess_slice$ds) & ds <= max(assess_slice$ds))
-                  }
-                  if (!is.null(holidays_for_assess_slice) && nrow(holidays_for_assess_slice) > 0 && !is.null(arima_xreg_colnames_cv)) {
-                      if (attr(model_obj_cv, "holiday_regressor_type") == "weekly_aggregated") {
-                          assess_dates_for_xreg <- data.frame(ds = assess_slice$ds)
-                          future_xreg_df_cv <- assess_dates_for_xreg %>%
-                              dplyr::rowwise() %>%
-                              dplyr::mutate(
-                                  has_holiday_in_week = any(holidays_for_assess_slice$ds >= ds & holidays_for_assess_slice$ds <= (ds + lubridate::days(6)))
-                              ) %>% dplyr::ungroup() %>% dplyr::mutate(has_holiday_in_week = as.integer(has_holiday_in_week))
-                          if("has_holiday_in_week" %in% names(future_xreg_df_cv) && "has_holiday_in_week" %in% arima_xreg_colnames_cv) { # ensure the column name matches
-                               future_xreg_cv <- as.matrix(future_xreg_df_cv %>% dplyr::select(has_holiday_in_week))
-                          } else if ("has_holiday_in_week" %in% arima_xreg_colnames_cv) { # Model expects it but not generated
-                                future_xreg_cv <- matrix(0, nrow = horizon_cv_fold, ncol = 1, dimnames = list(NULL, "has_holiday_in_week"))
-                          }
-                      } else { 
-                          future_holiday_dummies_cv <- holidays_for_assess_slice %>%
-                              dplyr::mutate(holiday = make.names(holiday), value = 1) %>%
-                              tidyr::pivot_wider(names_from = holiday, values_from = value, values_fill = 0)
-                          future_xreg_df_base_cv <- data.frame(ds = assess_slice$ds)
-                          for (col_name in arima_xreg_colnames_cv) { future_xreg_df_base_cv[[col_name]] <- 0 }
-                          if (nrow(future_holiday_dummies_cv) > 0 && ncol(future_holiday_dummies_cv) > 1) {
-                              cols_from_dummies_cv <- setdiff(names(future_holiday_dummies_cv), "ds")
-                              temp_join_cv <- future_xreg_df_base_cv %>% dplyr::select(ds) %>%
-                                              dplyr::left_join(future_holiday_dummies_cv %>% dplyr::select(ds, all_of(cols_from_dummies_cv)), by = "ds")
-                              for(col_h_cv in cols_from_dummies_cv) {
-                                  if(col_h_cv %in% names(future_xreg_df_base_cv) && col_h_cv %in% names(temp_join_cv)) {
-                                      future_xreg_df_base_cv[[col_h_cv]] <- dplyr::coalesce(temp_join_cv[[col_h_cv]], future_xreg_df_base_cv[[col_h_cv]])
-                                  }
-                              }
-                          }
-                          future_xreg_cv <- as.matrix(future_xreg_df_base_cv %>% dplyr::select(all_of(arima_xreg_colnames_cv)))
-                      }
-                  } else if (!is.null(arima_xreg_colnames_cv)) { 
-                       future_xreg_cv <- matrix(0, nrow = horizon_cv_fold, ncol = length(arima_xreg_colnames_cv), dimnames = list(NULL, arima_xreg_colnames_cv))
-                  }
+        shiny::incProgress(0.1, detail = "Preparing data...")
+        # Ensure all required reactive data is available
+        req(
+          plot_obj_reactive(), 
+          metrics_df_reactive(), 
+          r$run_models_summary,
+          r$run_id > 0 # Ensure models have been run
+        )
+        
+        # Generate Model Summaries Text
+        model_summaries_for_report <- list()
+        if (length(r$run_models_summary) > 0) {
+          shiny::incProgress(0.2, detail = "Formatting model summaries...")
+          for (model_name_iter in names(r$run_models_summary)) { # Renamed to avoid conflict
+            summary_entry <- r$run_models_summary[[model_name_iter]]
+            if (isTRUE(summary_entry$success)) {
+              
+              # Basic Info
+              text_summary_parts <- c(
+                paste0("Model: ", model_name_iter),
+                paste0("Aggregation: ", summary_entry$aggregation_level %||% "N/A")
+              )
+              
+              # ARIMA Specifics
+              if (model_name_iter == "ARIMA") {
+                if (!is.null(summary_entry$arima_order)) {
+                  text_summary_parts <- c(text_summary_parts, paste0("ARIMA Order (auto/manual): ", paste(names(summary_entry$arima_order), summary_entry$arima_order, collapse=", ")))
                 }
-                forecast_obj_cv <- forecast_arima(model_obj_cv, horizon_cv_fold, last_train_slice_date, freq_str_cv, future_xreg = future_xreg_cv, holidays_df = current_global_holidays_cv)
-                if(!is.null(forecast_obj_cv)) forecast_tibble_cv <- forecast_obj_cv$forecast
+                if (!is.null(summary_entry$frequency_used)) {
+                  text_summary_parts <- c(text_summary_parts, paste0("Frequency Used: ", summary_entry$frequency_used))
+                }
+                # Add manual ARIMA config if auto was false
+                if(isFALSE(summary_entry$config$auto)){
+                    manual_order_str <- paste0("p=", summary_entry$config$p, ", d=", summary_entry$config$d, ", q=", summary_entry$config$q)
+                    if(isTRUE(summary_entry$config$seasonal)){
+                        manual_order_str <- paste0(manual_order_str, ", P=", summary_entry$config$P, ", D=", summary_entry$config$D, ", Q=", summary_entry$config$Q, ", Period=", summary_entry$config$period)
+                    }
+                    text_summary_parts <- c(text_summary_parts, paste0("Manual Config: ", manual_order_str))
+                }
               }
-            } else if (model_name_cv == "ETS") {
-              model_obj_cv <- train_ets(train_slice, model_config_original, original_agg_level, horizon_cv_fold)
-              if(!is.null(model_obj_cv)) {
-                forecast_obj_cv <- forecast_ets(model_obj_cv, horizon_cv_fold, last_train_slice_date, freq_str_cv)
-                if(!is.null(forecast_obj_cv)) forecast_tibble_cv <- forecast_obj_cv$forecast
+              
+              # ETS Specifics
+              if (model_name_iter == "ETS" && !is.null(summary_entry$fitted_method)) {
+                text_summary_parts <- c(text_summary_parts, paste0("ETS Method: ", summary_entry$fitted_method))
+                if(isTRUE(summary_entry$config$manual)){
+                    manual_spec_str <- paste0("E=",summary_entry$config$ets_e, ", T=",summary_entry$config$ets_t, ", S=",summary_entry$config$ets_s, ", Damped=",summary_entry$config$ets_damped_str)
+                    text_summary_parts <- c(text_summary_parts, paste0("Manual Config: ", manual_spec_str))
+                }
               }
-            } else if (model_name_cv == "TBATS") {
-              model_obj_cv <- train_tbats(train_slice, model_config_original, original_agg_level)
-              if(!is.null(model_obj_cv)) {
-                forecast_obj_cv <- forecast_tbats(model_obj_cv, horizon_cv_fold, last_train_slice_date, freq_str_cv)
-                if(!is.null(forecast_obj_cv)) forecast_tibble_cv <- forecast_obj_cv$forecast
+              
+              # TBATS Specifics
+              if (model_name_iter == "TBATS" && !is.null(summary_entry$fitted_method)) {
+                 text_summary_parts <- c(text_summary_parts, paste0("TBATS Method: ", summary_entry$fitted_method))
               }
-            } else if (model_name_cv == "Prophet") {
-              holidays_for_prophet_cv <- NULL
-              if (!is.null(current_global_holidays_cv) && nrow(current_global_holidays_cv) > 0) {
-                 holidays_for_prophet_cv <- current_global_holidays_cv
-              }
-              prophet_train_slice_cv <- train_slice
-              if(model_config_original$growth == 'logistic' && !is.null(model_config_original$capacity)) {
-                  prophet_train_slice_cv$cap <- model_config_original$capacity
-              }
-              # Simplified: assumes no external regressors for Prophet in CV
-              model_obj_cv <- train_prophet(prophet_train_slice_cv, model_config_original, holidays_input = holidays_for_prophet_cv)
-              if(!is.null(model_obj_cv)) {
-                forecast_tibble_cv <- forecast_prophet(model_obj_cv, horizon_cv_fold, freq_str_cv, model_config_original$capacity)
-              }
-            } else if (model_name_cv == "XGBoost") {
-              req(unprepared_recipe_cv)
-              xgb_params_for_cv <- model_config_original # Using original UI config for CV
-              prep_recipe_cv_fold <- recipes::prep(unprepared_recipe_cv, training = train_slice)
-              model_obj_cv <- train_xgboost(prep_recipe_cv_fold, xgb_params_for_cv)
-              if(!is.null(model_obj_cv)) {
-                forecast_tibble_cv <- forecast_xgboost(model_obj_cv, prep_recipe_cv_fold, full_train_data, last_train_slice_date, horizon_cv_fold, freq_str_cv)
-              }
-            } else if (model_name_cv == "GAM") {
-              holidays_for_gam_cv <- NULL
-              if (!is.null(current_global_holidays_cv) && nrow(current_global_holidays_cv) > 0) {
-                 holidays_for_gam_cv <- current_global_holidays_cv
-              }
-              model_obj_cv <- train_gam(train_slice, model_config_original, holidays_df = holidays_for_gam_cv)
-              if(!is.null(model_obj_cv)) {
-                forecast_obj_cv <- forecast_gam(model_obj_cv, train_slice, horizon_cv_fold, freq_str_cv, model_config_original, holidays_df = holidays_for_gam_cv)
-                if(!is.null(forecast_obj_cv)) forecast_tibble_cv <- forecast_obj_cv$forecast
-              }
-            } else if (model_name_cv == "RF") {
-              req(unprepared_recipe_cv)
-              rf_params_for_cv <- model_config_original 
-              prep_recipe_cv_fold_rf <- recipes::prep(unprepared_recipe_cv, training = train_slice)
-              model_obj_cv <- train_rf(prep_recipe_cv_fold_rf, rf_params_for_cv)
-              if(!is.null(model_obj_cv)) {
-                forecast_obj_cv <- forecast_rf(model_obj_cv, prep_recipe_cv_fold_rf, full_train_data, train_slice, last_train_slice_date, horizon_cv_fold, freq_str_cv)
-                if(!is.null(forecast_obj_cv)) forecast_tibble_cv <- forecast_obj_cv$forecast
-              }
-            } else if (model_name_cv == "NNETAR") {
-              # Use the original config for NNETAR CV (tuning not handled here for NNETAR CV)
-              nnetar_config_cv <- r$run_models_summary[[model_name_cv]]$config 
-              model_obj_cv <- train_nnetar(train_slice, nnetar_config_cv, original_agg_level)
-              if(!is.null(model_obj_cv)) {
-                forecast_output_cv <- forecast_nnetar(model_obj_cv, horizon_cv_fold, last_train_slice_date, freq_str_cv)
-                if(!is.null(forecast_output_cv)) forecast_tibble_cv <- forecast_output_cv$forecast
-              }
-            }
+              
+              # Prophet Specifics
+              if (model_name_iter == "Prophet" && !is.null(summary_entry$config)) {
+                cfg <- summary_entry$config
+                prophet_details <- paste0(
+                  "Growth: ", cfg$growth %||% "N/A", 
+                  ", Yearly: ", cfg$yearly %||% "N/A", 
+                  ", Weekly: ", cfg$weekly %||% "N/A", 
+                  ", Daily: ", cfg$daily %||% "N/A"
+                )
+                if(cfg$growth == "logistic" && !is.null(cfg$capacity)){
+                    prophet_details <- paste0(prophet_details, ", Capacity: ", cfg$capacity)
+                }
+                text_summary_parts <- c(text_summary_parts, prophet_details)
+                if(isTRUE(cfg$used_holidays)) text_summary_parts <- c(text_summary_parts, "Used Holidays: Yes")
+                if(isTRUE(cfg$used_regressors)) text_summary_parts <- c(text_summary_parts, "Used Regressors: Yes")
 
-            if (!is.null(forecast_tibble_cv) && nrow(forecast_tibble_cv) == nrow(assess_slice)) {
-              req("yhat" %in% names(forecast_tibble_cv))
-              actuals_assess <- assess_slice$y
-              predictions_assess <- if("ds" %in% names(forecast_tibble_cv)) {
-                  forecast_tibble_cv[match(assess_slice$ds, forecast_tibble_cv$ds), "yhat", drop = TRUE]
-              } else {
-                  forecast_tibble_cv$yhat
               }
-              if(anyNA(predictions_assess)) {
-                  message(paste("Slice", i, "Model", model_name_cv, "- NAs in predictions. Skipping metrics for this fold."))
-              } else {
-                  metrics_calculator <- yardstick::metric_set(yardstick::mae, yardstick::rmse, yardstick::mape)
-                  fold_metrics_tbl <- metrics_calculator(
-                    data = tibble::tibble(truth = actuals_assess, estimate = predictions_assess),
-                    truth = truth,
-                    estimate = estimate
-                  )
-                  fold_metrics_tbl <- fold_metrics_tbl %>% 
-                    dplyr::mutate(Model = model_name_cv, Fold = i, Slice_Id = slice$.id) # Use Slice_Id
-                  all_cv_metrics[[length(all_cv_metrics) + 1]] <- fold_metrics_tbl
-                  message(paste("Slice", i, "Model", model_name_cv, "- Metrics calculated."))
+              
+              # XGBoost Specifics
+              if (model_name_iter == "XGBoost" && !is.null(summary_entry$config)) {
+                if(isTRUE(summary_entry$tuning_enabled) && !is.null(summary_entry$tuned_params)){
+                    tuned_str <- paste(names(summary_entry$tuned_params), sapply(summary_entry$tuned_params, function(x) if(is.numeric(x)) round(x, 4) else x), collapse="; ")
+                    text_summary_parts <- c(text_summary_parts, paste0("Tuned Params: ", tuned_str))
+                } else {
+                    cfg <- summary_entry$config
+                    xgb_details <- paste0("Rounds: ", cfg$nrounds, ", Eta: ", cfg$eta, ", Depth: ", cfg$max_depth) # etc.
+                    text_summary_parts <- c(text_summary_parts, paste0("Config: ", xgb_details))
+                }
               }
-            } else {
-              message(paste("Slice", i, "Model", model_name_cv, "- Forecast failed or length mismatch. Skipping metrics."))
+              
+              # RF Specifics
+              if (model_name_iter == "RF" && !is.null(summary_entry$config)) {
+                if(isTRUE(summary_entry$tuning_enabled) && !is.null(summary_entry$tuned_params)){
+                    tuned_rf_str <- paste(names(summary_entry$tuned_params), sapply(summary_entry$tuned_params, function(x) if(is.numeric(x)) round(x, 4) else x), collapse="; ")
+                    text_summary_parts <- c(text_summary_parts, paste0("Tuned Params: ", tuned_rf_str))
+                } else {
+                    cfg <- summary_entry$config
+                    rf_details <- paste0("Trees: ", cfg$rf_num_trees, ", mtry: ", cfg$rf_mtry, ", MinNode: ", cfg$rf_min_node_size)
+                    text_summary_parts <- c(text_summary_parts, paste0("Config: ", rf_details))
+                }
+              }
+
+              # GAM Specifics
+              if (model_name_iter == "GAM" && !is.null(summary_entry$config)) {
+                  cfg <- summary_entry$config
+                  gam_details <- paste0("Trend: ", cfg$smooth_trend %||% "N/A", ", SeasonY: ", cfg$use_season_y %||% "N/A", ", SeasonW: ", cfg$use_season_w %||% "N/A")
+                  text_summary_parts <- c(text_summary_parts, gam_details)
+              }
+              
+              # NNETAR Specifics
+              if (model_name_iter == "NNETAR" && !is.null(summary_entry$fitted_method)) {
+                  text_summary_parts <- c(text_summary_parts, paste0("NNETAR Method: ", summary_entry$fitted_method))
+                  if (!is.null(summary_entry$frequency_used)) {
+                      text_summary_parts <- c(text_summary_parts, paste0("Frequency Used: ", summary_entry$frequency_used))
+                  }
+                  # Add more config details if needed from summary_entry$config
+              }
+
+              model_summaries_for_report[[length(model_summaries_for_report) + 1]] <- list(
+                model_name = model_name_iter, 
+                summary_text = paste(text_summary_parts, collapse = "\n")
+              )
             }
-          }, error = function(e_cv) {
-            message(paste("Error in CV for model", model_name_cv, "slice", i, ":", conditionMessage(e_cv)))
-          }) 
-        } 
-      } 
-      
-      if (length(all_cv_metrics) > 0) {
-        final_cv_metrics_df <- dplyr::bind_rows(all_cv_metrics)
-        r$cv_raw_metrics_list(final_cv_metrics_df) # Store raw metrics for plotting
+          }
+        }
         
-        cv_summary_table <- final_cv_metrics_df %>%
-          dplyr::group_by(Model, .metric) %>%
-          dplyr::summarise(.estimate = mean(.estimate, na.rm = TRUE), .groups = "drop") %>%
-          tidyr::pivot_wider(names_from = .metric, values_from = .estimate)
+        shiny::incProgress(0.4, detail = "Setting up report template...")
+        # Define temporary file paths
+        temp_report_path <- tempfile(fileext = ".Rmd")
+        temp_output_path <- tempfile(fileext = paste0(".", input$reportFormat))
+        
+        # Copy the R Markdown template to the temporary path
+        # Using system.file as a robust way to get package files
+        # Assuming the package name is 'forecastApp' as per golem structure
+        template_origin_path <- system.file("rmarkdown/templates/report_template.Rmd", package = "forecastApp")
+        if (!file.exists(template_origin_path)) {
+            stop("Report template not found. Expected at: ", template_origin_path)
+        }
+        file.copy(template_origin_path, temp_report_path, overwrite = TRUE)
+        
+        # Prepare parameters for R Markdown
+        params_list <- list(
+          report_title = paste("Forecast Report -", toupper(input$reportFormat)),
+          forecast_plot = plot_obj_reactive(),    # The actual plotly object
+          metrics_table = metrics_df_reactive(),  # The data frame
+          model_summaries = model_summaries_for_report,
+          run_date = Sys.time()
+        )
+        
+        shiny::incProgress(0.6, detail = "Rendering report...")
+        # Render the R Markdown document
+        tryCatch({
+          if (input$reportFormat == "pdf") {
+            if (!tinytex::is_tinytex()) {
+              shiny::showNotification("TinyTeX is not installed. PDF reports require a LaTeX distribution. Consider installing TinyTeX with tinytex::install_tinytex().", type = "warning", duration = 15)
+            }
+          }
+          rmarkdown::render(
+            input = temp_report_path,
+            output_format = if (input$reportFormat == "pdf") "pdf_document" else "html_document",
+            output_file = temp_output_path,
+            params = params_list,
+            envir = new.env(parent = globalenv()) # Render in a clean environment
+          )
+          
+          shiny::incProgress(0.9, detail = "Finalizing...")
+          # Copy the rendered file to the 'file' argument of downloadHandler
+          if (!file.exists(temp_output_path)) {
+            stop(paste("Rendered report file not found at temporary path:", temp_output_path, "Cannot proceed with download."))
+          }
+          file.copy(temp_output_path, file, overwrite = TRUE)
+          shiny::showNotification("Report generated successfully!", type = "message", duration = 5)
+          
+        }, error = function(e_render) {
+          error_msg_render <- paste("Error during rmarkdown::render:", conditionMessage(e_render))
+          # Log full error to console for debugging
+          print(error_msg_render)
+          print(e_render) # Print the full error object
 
-        r$cv_results_data(cv_summary_table) # Store summarized metrics for table
-        shiny::showNotification("Cross-validation complete.", type = "message")
-      } else {
-        r$cv_results_data(NULL)
-        r$cv_raw_metrics_list(NULL)
-        shiny::showNotification("Cross-validation ran but no metrics were calculated.", type = "warning")
+          # Check if the error is specifically a LaTeX error for PDF
+          if (input$reportFormat == "pdf" && grepl("LaTeX failed to compile", conditionMessage(e_render), ignore.case = TRUE)) {
+            error_msg_render <- paste(error_msg_render, 
+                                      "This often means essential LaTeX packages are missing. ",
+                                      "If using TinyTeX, try running tinytex::tlmgr_install(c('fancyhdr', 'titling', 'framed')) or check the .log file mentioned in the error for more details. ",
+                                      "The log file path is often in the error message: ",
+                                      gsub(".*\\file([[:alnum:]]+)\\.tex.*",
+                                           "\\\\file\\1.log",
+                                           conditionMessage(e_render))
+                                    )
+          }
+          shiny::showNotification(error_msg_render, type = "error", duration = 20)
+          # Ensure 'file' (the downloadHandler's output file) is not left empty or non-existent if possible,
+          # though Shiny usually handles this by not providing a download if 'file' isn't valid.
+          # Creating an empty text file as a fallback to prevent 404s if render fails.
+          # This provides *something* to download, even if it's just an error message.
+          tryCatch({
+            writeLines(c("Report generation failed.", error_msg_render), file)
+          }, error = function(e_write) {
+            # If even writing a simple text file fails, log it.
+            message(paste("Failed to write fallback error file for report generation:", conditionMessage(e_write)))
+          })
+        }, finally = {
+            # Clean up temporary files
+            if (file.exists(temp_report_path)) unlink(temp_report_path)
+            if (file.exists(temp_output_path)) unlink(temp_output_path)
+        })
+      }) # End withProgress
+    },
+    contentType = function() { # Dynamic content type
+      if (input$reportFormat == "pdf") {
+        "application/pdf"
+      } else { # HTML
+        "text/html"
       }
-    }) 
-
-    output$cv_results_table_output <- DT::renderDataTable({
-      req(r$cv_results_data())
-      DT::datatable(r$cv_results_data(), options = list(pageLength = 5, scrollX = TRUE), caption = "Mean Cross-Validation Metrics")
-    })
-    output$cv_results_plot_output <- renderPlot({
-      req(r$cv_raw_metrics_list())
-      final_cv_metrics_df_plot <- r$cv_raw_metrics_list()
-      req(nrow(final_cv_metrics_df_plot) > 0)
-      ggplot2::ggplot(final_cv_metrics_df_plot, ggplot2::aes(x = Model, y = .estimate, fill = Model)) +
-        ggplot2::geom_boxplot(alpha = 0.7) +
-        ggplot2::facet_wrap(~ .metric, scales = "free_y") +
-        ggplot2::labs(title = "Distribution of CV Metrics Across Folds", x = "Model", y = "Metric Value") +
-        ggplot2::theme_minimal() +
-        ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1))
-    })
-    
-  }) 
-  # --- End Validation Section Server Logic ---
+    }
+  )
+  # --- End Report Generation ---
 
 }) # End app_server
 }

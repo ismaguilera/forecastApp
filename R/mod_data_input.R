@@ -9,7 +9,8 @@
 mod_data_input_ui <- function(id){
   ns <- NS(id)
   tagList(
-    fileInput(ns("fileUpload"), "Choose CSV or Excel File",
+    # fileInput(ns("fileUpload"), "Choose CSV or Excel File",
+    fileInput(ns("fileUpload"), textOutput("ui_csv_file_upload", inline = TRUE),
               multiple = FALSE,
               accept = c(".csv",
                          ".xlsx",
@@ -18,8 +19,8 @@ mod_data_input_ui <- function(id){
                          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                          "application/vnd.ms-excel")),
     # Wrap selectors in a conditional panel or disable initially - let's disable
-    selectInput(ns("defaultDataSelect"), "Choose Default Dataset", choices = NULL), # Added selectInput
-    actionButton(ns("loadDefault"), "Load Selected Default Dataset", icon = icon("table"), class="btn-sm"), # Modified button text
+    selectInput(ns("defaultDataSelect"), textOutput("ui_choose_default_dataset", inline = TRUE), choices = NULL), # Added selectInput
+    actionButton(ns("loadDefault"), textOutput("ui_load_default_dataset", inline = TRUE), icon = icon("table"), class="btn-sm"), # Modified button text
     hr(), # Add separator
     # selectInput(ns("dateCol"), "Select Date Column", choices = NULL),
     # selectInput(ns("valueCol"), "Select Value Column", choices = NULL),
@@ -29,12 +30,18 @@ mod_data_input_ui <- function(id){
       type = "tabs",
 
       # --- ARIMA Tab ---
-      tabPanel("Select Columns",
+      tabPanel(textOutput("ui_select_columns"),
                br(),
-               selectInput(ns("dateCol"), "Select Date Column", choices = NULL),
-               selectInput(ns("valueCol"), "Select Value Column", choices = NULL)
+               selectInput(ns("dateCol"),  textOutput("ui_select_date_col", inline = TRUE), choices = NULL),
+               selectInput(ns("valueCol"), textOutput("ui_select_value_col", inline = TRUE), choices = NULL)
       ),
-      tabPanel("Preview",
+      # tabPanel("Select Columns",
+      #          br(),
+      #          selectInput(ns("dateCol"), "Select Date Column", choices = NULL),
+      #          selectInput(ns("valueCol"), "Select Value Column", choices = NULL)
+      # ),
+      # tabPanel("Preview",
+      tabPanel(textOutput("ui_preview", inline = TRUE),
                br(),
                DT::DTOutput(ns("dataPreview"))
       )

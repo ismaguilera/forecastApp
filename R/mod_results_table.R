@@ -44,8 +44,8 @@ mod_results_table_server <- function(id, reactive_metrics_summary){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
 
-    output$metricsTable <- DT::renderDT({
-
+    # Reactive expression for the formatted metrics data frame
+    reactive_metrics_df <- reactive({
       metrics_data <- reactive_metrics_summary()
 
       # Require metrics_data to be non-NULL and have rows before proceeding
@@ -74,41 +74,42 @@ mod_results_table_server <- function(id, reactive_metrics_summary){
             RMSE = rmse,
             MAPE = mape
           )
-
       }, error = function(e){
         shiny::showNotification("Error formatting metrics table.", type = "warning")
         # Return an empty placeholder or the original data to show something
         return(tibble::tibble(Status = "Error formatting data"))
       })
+      return(metrics_formatted)
+    })
 
+    output$metricsTable <- DT::renderDT({
+      # Render the DataTable using the reactive data frame
+      metrics_to_display <- reactive_metrics_df()
+      req(metrics_to_display) # Ensure it's available
 
-      # Render the DataTable
       DT::datatable(
-        metrics_formatted,
+        metrics_to_display,
         rownames = FALSE,
-        # caption = "Model Performance Metrics", # Caption can be added
-        filter = 'top', # Add column filters at the top
+        filter = 'top',
         options = list(
-          paging = FALSE, # No pagination
-          searching = TRUE, # Enable searching for filters to work
-          info = FALSE, # No "Showing X of Y entries"
-          ordering = TRUE, # No column sorting
-          columnDefs = list(list(className = 'dt-center', targets = '_all')) # Center align text
+          paging = FALSE,
+          searching = TRUE,
+          info = FALSE,
+          ordering = TRUE,
+          columnDefs = list(list(className = 'dt-center', targets = '_all'))
         )
       ) %>%
-        # Format numeric columns (MAE, RMSE, MAPE)
-        # Check if columns exist before formatting
-        {
-          dt <- .
-          if ("MAE" %in% names(metrics_formatted)) dt <- DT::formatRound(dt, columns = "MAE", digits = 3)
-          if ("RMSE" %in% names(metrics_formatted)) dt <- DT::formatRound(dt, columns = "RMSE", digits = 3)
-          # Yardstick MAPE is 0-100, format as number with fewer digits (or %)
-          if ("MAPE" %in% names(metrics_formatted)) dt <- DT::formatRound(dt, columns = "MAPE", digits = 2)
-          # Could add %>% formatString(columns = "MAPE", suffix="%") if data was 0-1 scale
-          dt
-        }
+      {
+        dt <- .
+        # Use names(metrics_to_display) for checking column existence
+        if ("MAE" %in% names(metrics_to_display)) dt <- DT::formatRound(dt, columns = "MAE", digits = 3)
+        if ("RMSE" %in% names(metrics_to_display)) dt <- DT::formatRound(dt, columns = "RMSE", digits = 3)
+        if ("MAPE" %in% names(metrics_to_display)) dt <- DT::formatRound(dt, columns = "MAPE", digits = 2)
+        dt
+      }
+    }, server = FALSE)
 
-    }, server = FALSE) # Use server = FALSE for static tables unless data is huge
-
+    # Return the reactive metrics data frame from the module
+    return(reactive_metrics_df)
   })
 }

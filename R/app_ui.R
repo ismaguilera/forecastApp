@@ -3,9 +3,13 @@
 #' The application User-Interface using bslib::page_navbar
 #' @param request Internal parameter for `{shiny}`. DO NOT REMOVE.
 #' @import shiny
+#' @import shiny.i18n
 #' @import rintrojs
 #' @import bslib
 #' @noRd
+
+i18n <- Translator$new(translation_json_path = app_sys("i18n",'translation.json'))
+
 app_ui <- function(request) {
   tagList(
     # Required for rintrojs (if still using the tour)
@@ -16,8 +20,10 @@ app_ui <- function(request) {
 
     # Top-level container: page_navbar
     bslib::page_navbar(
-      title = "Vaccine Forecasting App", # Page title
-      theme = bslib::bs_theme(version = 5, bootswatch = "cerulean"), # Apply theme (change "cerulean" if desired)
+      title = uiOutput("ui_page_title"), # Page title
+      window_title = "Forecast App", # Browser tab title
+      theme = bslib::bs_theme(version = 5, bootswatch = "cerulean"),
+      # theme = bslib::bs_theme(version = 5, bootswatch = "cosmo", bg = "#2c3e50", fg = "#ffffff"), # Apply theme (change "cerulean" if desired)
       # Collapsible navigation on smaller screens
       # collapsible = TRUE,
       # Inverse theme for navbar (optional)
@@ -25,11 +31,11 @@ app_ui <- function(request) {
 
       # --- Data Panel ---
       bslib::nav_panel(
-        title = tagList(shiny::icon("table"), "Data"),
+        title = tagList(shiny::icon("table"), textOutput("ui_nav_data", inline = TRUE)),
         # Internal layout for this panel
         bslib::layout_sidebar(
           sidebar = bslib::sidebar(
-            title = "Data input",
+            title = textOutput("ui_sidebar_data", inline = TRUE), # Dynamic sidebar title
             width = 350, # Adjust width as needed
             # Placeholder for Data Input Module UI
             # tags$p("Placeholder for Data Upload controls (e.g., mod_data_input_ui)"),
@@ -37,28 +43,31 @@ app_ui <- function(request) {
             mod_data_input_ui("data_input_1"), # Module UI would go here
 
             hr(), # Separator
-            h5("Load Holidays (Optional)"), # Section title
-            fileInput("global_holidays_file", "Upload Global Holidays File (CSV: ds, holiday)",
+            h5(textOutput("ui_load_holidays",inline=TRUE)), # Section title
+            # fileInput("global_holidays_file", "Upload Global Holidays File (CSV: ds, holiday)",
+            fileInput("global_holidays_file", textOutput("ui_upload_global_holidays", inline = TRUE),
                       multiple = FALSE,
                       accept = c(".csv", "text/csv", "text/comma-separated-values,text/plain")),
-            actionButton("load_default_holidays", "Load Default Holidays", icon = icon("calendar-check"), class="btn-sm") # Add button
+            # actionButton("load_default_holidays", "Load Default Holidays", icon = icon("calendar-check"), class="btn-sm") # Add button
+            actionButton("load_default_holidays", textOutput("ui_load_holidays_default", inline = TRUE), icon = icon("calendar-check"), class="btn-sm") # Add button
 
           ),
           # Main content for Data panel
-          bslib::card(
-            bslib::card_body(
-              h4("Global Holidays Data (Preview)"),
-              verbatimTextOutput("global_holidays_preview")
-            )
-          ),
+          # bslib::card(
+          #   bslib::card_header("Global Holidays Data (Preview)"),
+          #   bslib::card_body(
+          #     verbatimTextOutput("global_holidays_preview")
+          #   )
+          # ),
           bslib::accordion(
             open = c("Preprocessing & Split","Time Series Decomposition"),
             bslib::accordion_panel(
-              "Preprocessing & Split",
+              title = "Preprocessing & Split", # Title for accordion panel
               mod_preprocess_controls_ui("preprocess_controls_1")
             ),
             bslib::accordion_panel(
-              "Time Series Decomposition",
+              title = "Time Series Decomposition", # Title for accordion panel
+              full_screen = TRUE, # Added full_screen here
               mod_decomposition_plot_ui("decomposition_plot_1")
             )
           )
@@ -86,7 +95,7 @@ app_ui <- function(request) {
 
       # --- Model Panel ---
       bslib::nav_panel(
-        title = tagList(shiny::icon("gears"), "Model"),
+        title = tagList(shiny::icon("gears"),textOutput("ui_nav_model", inline = TRUE)),
         # Internal layout for this panel
         # bslib::layout_sidebar(
         #   sidebar = bslib::sidebar(
@@ -111,7 +120,7 @@ app_ui <- function(request) {
 
       # --- Forecast Results Panel ---
       bslib::nav_panel(
-        title = tagList(shiny::icon("chart-line"), "Forecast results"),
+        title = tagList(shiny::icon("chart-line"),textOutput("ui_nav_forecast_results", inline = TRUE)),
         # Internal layout for this panel
         bslib::layout_sidebar(
           sidebar = bslib::sidebar(
@@ -125,12 +134,31 @@ app_ui <- function(request) {
           bslib::card(
             bslib::card_body(
               # Add padding or alignment if needed
-              div(style = "display: flex; justify-content: flex-end;", # Align button right
+              div(style = "display: flex; justify-content: flex-end; align-items: center;", # Align button right & vertically center
                   downloadButton(
                     outputId = "downloadForecastData",
                     label = "Download Forecasts (CSV)",
                     icon = shiny::icon("download"),
                     class = "btn-success" # Optional styling
+                  ),
+                  # Spacing
+                  tags$span(style="margin-left: 20px;"),
+                  # Report Format Radio Buttons
+                  radioButtons(
+                    inputId = "reportFormat", # Use inputId for direct use in app_ui
+                    label = NULL, # Keep it compact
+                    choices = list("HTML" = "html", "PDF" = "pdf"),
+                    selected = "html",
+                    inline = TRUE
+                  ),
+                  # Spacing
+                  tags$span(style="margin-left: 10px;"),
+                  # New Download Report Button
+                  downloadButton(
+                    outputId = "downloadReport",
+                    label = "Download Report",
+                    icon = shiny::icon("file-alt"),
+                    class = "btn-info"
                   )
               )
             )
@@ -138,13 +166,13 @@ app_ui <- function(request) {
           bslib::navset_card_underline(
             title = "Visualizations",
             # Panel with plot ----
-            bslib::nav_panel("Plot",h1="Forecast plot", mod_results_plot_ui("results_plot_1")),
+            bslib::nav_panel("Plot", h1="Forecast plot", mod_results_plot_ui("results_plot_1"), full_screen = TRUE),
 
             # Panel with summary ----
-            bslib::nav_panel("Performance",h1="Model performance metrics", mod_results_table_ui("results_table_1")),
+            bslib::nav_panel("Performance", h1="Model performance metrics", mod_results_table_ui("results_table_1"), full_screen = TRUE),
 
             # Panel with table ----
-            bslib::nav_panel("Extra Plots",h1="Additional plots", mod_extra_plots_ui("extra_plots_1"))
+            bslib::nav_panel("Extra Plots", h1="Additional plots", mod_extra_plots_ui("extra_plots_1"), full_screen = TRUE)
           )
 
           # bslib::card(
@@ -178,45 +206,11 @@ app_ui <- function(request) {
       ), # End Results nav_panel
 
       # --- Validation Panel ---
-      bslib::nav_panel(
-        title = tagList(shiny::icon("circle-check"), "Validation"),
-        # Internal layout for this panel
-        bslib::layout_sidebar(
-          sidebar = bslib::sidebar(
-            title = "Config",
-            width = 350,
-            uiOutput("cv_model_selector_ui"), # Dynamic UI for model selection
-            hr(),
-            h5("Cross-Validation Parameters:"),
-            numericInput("cv_initial_window", "Initial Training Window (periods)", value = 90, min = 10),
-            numericInput("cv_horizon", "Forecast Horizon (per fold)", value = 30, min = 1),
-            numericInput("cv_skip", "Skip Periods (between folds)", value = 15, min = 0),
-            checkboxInput("cv_cumulative", "Cumulative Training Window", value = FALSE),
-            actionButton("run_cv_button", "Run Cross-Validation", icon = icon("play-circle"), class = "btn-primary")
-          ), # End sidebar
-          # Main content for Validation panel
-          bslib::card(
-            bslib::card_header("Cross-Validation Mean Metrics"),
-            bslib::card_body(
-              DT::dataTableOutput("cv_results_table_output")
-            )
-          ),
-          bslib::card(
-            bslib::card_header("Cross-Validation Metric Distributions"),
-            bslib::card_body(
-              plotOutput("cv_results_plot_output")
-            )
-          )
-        ) # End layout_sidebar for Validation panel
-      ), # End Validation nav_panel
-
-      bslib::nav_spacer(), # Adds space before right-aligned items
-      bslib::nav_item(
-        actionButton("save_session_button", "Save Session", icon = icon("save"), class = "btn-primary btn-sm")
+      bslib::nav_panel( # This is now handled by the module UI
+        title = tagList(shiny::icon("circle-check"),textOutput("ui_nav_validation", inline = TRUE)),
+        mod_validation_ui("validation_1") 
       ),
-      bslib::nav_item(
-        actionButton("load_session_button", "Load Session", icon = icon("folder-open"), class = "btn-info btn-sm")
-      ),
+       # Call the module UI here
 
       # --- Footer Definition ---
       # footer = tags$div(
@@ -227,7 +221,7 @@ app_ui <- function(request) {
       #   tags$p(tags$strong("Packages:"), tags$code("bslib, shiny, golem, dplyr, lubridate, plotly, forecast, prophet, xgboost, recipes, yardstick, readxl, DT, rintrojs, tidyr, tibble, slider, timetk, etc."))
       # )
       bslib::nav_panel(
-        title = tagList(shiny::icon("circle-info"), " About"),
+        title = tagList(shiny::icon("circle-info"),textOutput("ui_nav_about", inline = TRUE)),
         # Internal layout for this panel
         bslib::layout_sidebar(
           sidebar = bslib::sidebar(
@@ -238,6 +232,7 @@ app_ui <- function(request) {
           ), # End sidebar
 
           bslib::card(
+            full_screen = TRUE, # Added full_screen here
             bslib::card_header(tags$strong("Vaccine Forecasting Application:")),
             bslib::card_body(
               # Placeholder for validation outputs
@@ -256,6 +251,20 @@ app_ui <- function(request) {
             )
           )
         ) # End layout_sidebar for Validation panel
+      ),
+      bslib::nav_spacer(), # Adds space before right-aligned items
+      bslib::nav_item(
+        selectInput(inputId ="selected_language",
+                           label = NULL, # Fixed label for now
+                           choices = c("English" = "en", "Español" = "es"),
+                           selected = i18n$get_key_translation(), # Obtiene el idioma actual
+                           width = "120px") # Adjust width as needed
+      ),
+      bslib::nav_item(
+        actionButton("save_session_button", "Save Session", icon = icon("save"), class = "btn-primary btn-sm")
+      ),
+      bslib::nav_item(
+        actionButton("load_session_button", "Load Session", icon = icon("folder-open"), class = "btn-info btn-sm")
       ),
       footer =bslib::card_footer(
         class = "fs-6",

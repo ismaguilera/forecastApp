@@ -47,11 +47,13 @@ Imports:
     workflows,
     xgboost,
     yaml,
-    yardstick
+    yardstick,
+    rmarkdown,
+    knitr,
+    tinytex,
+    shiny.i18n
 Suggests:
     testthat (>= 3.0.0),
-    knitr,
-    rmarkdown,
     pkgload,
     htmltools
 Config/golem/version: 0.0.0.9000

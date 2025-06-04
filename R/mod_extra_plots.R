@@ -32,7 +32,9 @@ mod_extra_plots_ui <- function(id){
         tabsetPanel(
           tabPanel("Residuals vs Fitted", plotly::plotlyOutput(ns("residualsVsFittedPlot"))),
           tabPanel("Residual ACF", plotly::plotlyOutput(ns("residualAcfPlot"))),
-          tabPanel("Residual PACF", plotly::plotlyOutput(ns("residualPacfPlot")))
+          tabPanel("Residual PACF", plotly::plotlyOutput(ns("residualPacfPlot"))),
+          tabPanel("Residuals vs Time", plotly::plotlyOutput(ns("residualsOverTimePlot"))),
+          tabPanel("Residuals Distribution", plotly::plotlyOutput(ns("residualsHistogramPlot")))
         )
       )
     )
@@ -98,11 +100,14 @@ mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reac
       residuals_vec <- actual_values - fitted_values
 
       # Return a tibble for plotting
+      # Ensure ds is included and aligned
+      req(nrow(train_df) == length(residuals_vec)) # Ensure alignment
+      
       tibble::tibble(
+        ds = train_df$ds, # Add date series
         Fitted = fitted_values,
         Residuals = residuals_vec,
-        Time = seq_along(residuals_vec) # Simple index for ACF/PACF plots if needed
-        # Could also add train_df$ds if needed, but ensure alignment
+        Time = seq_along(residuals_vec) 
       )
     })
 
@@ -154,6 +159,50 @@ mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reac
 
     # --- Existing Plots (Cumulative and Yearly) ---
     # (Keep the existing logic for these plots below)
+
+    # --- Residuals Over Time Plot ---
+    output$residualsOverTimePlot <- plotly::renderPlotly({
+      res_data <- reactive_residuals_data()
+      req(res_data, "ds" %in% names(res_data))
+      selected_model <- input$selected_diagnostic_model 
+
+      p <- ggplot(res_data, aes(x = ds, y = Residuals)) +
+        geom_line(alpha = 0.7, color = "blue") +
+        geom_point(alpha = 0.5, color = "blue") + # Keep points for visibility of individual residuals
+        geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+        labs(title = paste("Residuals Over Time -", selected_model),
+             x = "Date",
+             y = "Residuals") +
+        theme_minimal()
+      
+      plotly::ggplotly(p)
+    })
+
+    # --- Residuals Histogram Plot ---
+    output$residualsHistogramPlot <- plotly::renderPlotly({
+      res_data <- reactive_residuals_data()
+      req(res_data)
+      selected_model <- input$selected_diagnostic_model
+
+      # Calculate mean and sd for normal curve overlay
+      mean_res <- mean(res_data$Residuals, na.rm = TRUE)
+      sd_res <- sd(res_data$Residuals, na.rm = TRUE)
+      
+      validate(need(!is.na(mean_res) && !is.na(sd_res) && sd_res > 0, 
+                    "Cannot calculate mean/sd for residuals (e.g., all NAs or no variance)."))
+
+      p <- ggplot(res_data, aes(x = Residuals)) +
+        geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "skyblue", color = "black", alpha = 0.7) +
+        # Use after_stat(density) for ggplot2 v3.4.0+ instead of ..density..
+        stat_function(fun = dnorm, args = list(mean = mean_res, sd = sd_res), color = "red", size = 1) +
+        labs(title = paste("Histogram of Residuals -", selected_model),
+             x = "Residuals",
+             y = "Density") +
+        theme_minimal()
+      
+      plotly::ggplotly(p)
+    })
+
     # combined_data <- reactive({
     #   req(reactive_train_df())
     #   # Forecast is required for these plots
