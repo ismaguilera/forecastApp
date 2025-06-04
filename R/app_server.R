@@ -10,6 +10,8 @@
 #' @importFrom utils head capture.output str packageVersion
 #' @importFrom purrr reduce 
 #' @importFrom rlang `%||%`
+#' @import future
+#' @import furrr
 # Needed for forecast() call inside observeEvent
 # Add other necessary imports if functions are called directly here
 #' @noRd
@@ -19,6 +21,11 @@ i18n <- Translator$new(translation_json_path = app_sys("i18n",'translation.json'
 i18n$set_translation_language('en')
 
 app_server <- function(input, output, session) {
+  # --- Setup for Parallel Processing ---
+  library(future)
+  library(furrr)
+  future::plan(future::multisession)
+
   # --- Language Selector Observer ---
   # observeEvent(input$selected_language, {
   #   req(input$selected_language)
@@ -247,46 +254,63 @@ app_server <- function(input, output, session) {
     df_holidays <- NULL
     tryCatch({
       df <- utils::read.csv(inFile$datapath, stringsAsFactors = FALSE, header = TRUE)
-      # Validar y procesar df (debe tener columnas 'ds' y 'holiday')
-      req("Fecha" %in% names(df), "Feriados_chilenos" %in% names(df)) # Original column names
+      if (!all(c("Fecha", "Feriados_chilenos") %in% names(df))) {
+        stop("Uploaded holiday file must contain 'Fecha' and 'Feriados_chilenos' columns.")
+      }
       df_holidays <- df %>%
         dplyr::rename(ds = Fecha, holiday = Feriados_chilenos) %>%
         dplyr::mutate(ds = lubridate::as_date(ds)) %>%
         dplyr::select(ds, holiday) %>%
         dplyr::filter(!is.na(ds) & !is.na(holiday))
-      req(nrow(df_holidays) > 0, "Processed holiday data is empty. Ensure correct format and non-empty data.")
+
+      if (nrow(df_holidays) == 0) {
+        stop("Processed holiday data is empty. Ensure 'Fecha' column contains valid dates and 'Feriados_chilenos' is not empty.")
+      }
       r$global_holidays_data(df_holidays)
-      shiny::showNotification("Global holidays file uploaded and processed successfully.", type = "message")
+      shiny::showNotification("Global holidays file uploaded and processed successfully.", type = "message", duration = 5)
     }, error = function(e) {
-      r$global_holidays_data(NULL) # Reset on error
-      error_message <- paste("Error processing global holidays file. Please check format (CSV with 'Fecha', 'Feriados_chilenos' columns) and content. Original error:", e$message)
-      shiny::showNotification(error_message, type = "error", duration = 10)
+      r$global_holidays_data(NULL)
+      user_error_message <- paste(
+        "Error processing uploaded global holidays file. Ensure it's a CSV with 'Fecha' (parsable as dates) and 'Feriados_chilenos' columns. Original error:",
+        conditionMessage(e)
+      )
+      shiny::showNotification(user_error_message, type = "error", duration = 15)
+      message(user_error_message) # Log to console
     })
   })
 
   observeEvent(input$load_default_holidays, {
-    req(input$load_default_holidays) # Triggered by button press
+    req(input$load_default_holidays)
     df_holidays <- NULL
     tryCatch({
       default_h_file_name <- get_golem_config("default_holiday_file")
-      req(default_h_file_name, "Default holiday file name not configured.")
+      req(default_h_file_name, "Default holiday file name not configured in golem-config.yml.")
       default_h_file_path <- app_sys("extdata", default_h_file_name)
-      req(file.exists(default_h_file_path), paste("Default holiday file not found at:", default_h_file_path))
+      req(file.exists(default_h_file_path), paste("Default holiday file not found at configured path:", default_h_file_path))
       
       df <- utils::read.csv(default_h_file_path, stringsAsFactors = FALSE, header = TRUE, fileEncoding="UTF-8-BOM")
-      req("Fecha" %in% names(df), "Feriados_chilenos" %in% names(df)) # Original column names
+      if (!all(c("Fecha", "Feriados_chilenos") %in% names(df))) {
+        stop("Default holiday file must contain 'Fecha' and 'Feriados_chilenos' columns.")
+      }
       df_holidays <- df %>%
         dplyr::rename(ds = Fecha, holiday = Feriados_chilenos) %>%
         dplyr::mutate(ds = lubridate::as_date(ds)) %>%
         dplyr::select(ds, holiday) %>%
         dplyr::filter(!is.na(ds) & !is.na(holiday))
-      req(nrow(df_holidays) > 0, "Processed default holiday data is empty.")
+
+      if (nrow(df_holidays) == 0) {
+        stop("Processed default holiday data is empty. Check file content and date formats.")
+      }
       r$global_holidays_data(df_holidays)
-      shiny::showNotification("Default global holidays loaded successfully.", type = "message")
+      shiny::showNotification("Default global holidays loaded successfully.", type = "message", duration = 5)
     }, error = function(e) {
-      r$global_holidays_data(NULL) # Reset on error
-      error_message <- paste("Error loading default global holidays. Please check the file and application configuration. Original error:", e$message)
-      shiny::showNotification(error_message, type = "error", duration = 10)
+      r$global_holidays_data(NULL)
+      user_error_message <- paste(
+        "Error loading default global holidays. Check the file format (CSV with 'Fecha', 'Feriados_chilenos'), content, and application configuration. Original error:",
+        conditionMessage(e)
+      )
+      shiny::showNotification(user_error_message, type = "error", duration = 15)
+      message(user_error_message) # Log to console
     })
   })
 
@@ -402,52 +426,116 @@ app_server <- function(input, output, session) {
     validate(need(nrow(train_df) >= 5, "Need at least 5 training data points.")) # Adjust as needed
 
     # Reset previous results
-    # r$forecast_obj <- NULL
-    # r$forecast_df <- NULL
     r$metrics_summary <- NULL
-    # r$model_name <- NULL
-    # r$arima_selected_order <- NULL
-    # r$arima_used_frequency <- NULL
-    model_success <- FALSE # Flag
+    model_success <- FALSE # Flag (though its utility might change with parallel execution)
 
+    # --- Prepare arguments for run_single_model_forecasting ---
+    # These are evaluated values, not reactive expressions themselves.
+    train_df_val <- preprocess_reactives$reactive_train_df()
+    test_df_val <- preprocess_reactives$reactive_test_df()
+    full_aggregated_df_val <- preprocess_reactives$reactive_aggregated_df()
+    agg_level_val <- preprocess_reactives$reactive_agg_level()
+    horizon_val <- model_config_reactives$forecast_horizon()
+    current_global_holidays_val <- r$global_holidays_data() # This is already a reactiveVal's value
+
+    # Convert model_config_reactives to a plain list to pass to futures
+    model_config_list_val <- reactiveValuesToList(model_config_reactives)
+
+    freq_str_val <- if (agg_level_val == "Daily") "day" else "week"
+    n_test_periods_val <- nrow(test_df_val)
+    n_future_periods_val <- horizon_val
+    total_periods_needed_val <- n_test_periods_val + n_future_periods_val
+    last_train_date_val <- max(train_df_val$ds)
+    by_period_forecast_val <- switch(freq_str_val, "week" = lubridate::weeks(1), lubridate::days(1))
+
+    future_dates_for_fcst_val <- seq.Date(
+      from = last_train_date_val + by_period_forecast_val,
+      by = freq_str_val,
+      length.out = total_periods_needed_val
+    )
+    # --- End argument preparation ---
 
     shiny::withProgress(message = 'Running Forecast...', value = 0, {
       temp_summary_list <- list() # Temp list to build summaries
+      successful_models <- c()   # Keep track of models that ran ok
+
       tryCatch({ # Outer tryCatch for overall process
-        successful_models <- c() # Keep track of models that ran ok
-        for (i in seq_along(selected_models_now)) {
-          model_name <- selected_models_now[i]
-          message(paste("--- Starting Model:", model_name, "---"))
-          current_progress <- (i-1) * progress_inc
-          shiny::incProgress(amount = 0, # Update message first
-                             detail = paste("Running", model_name,"(", i, "of", n_models,")"))
 
-          forecast_tibble <- NULL # Initialize for this model
-          fitted_values <- NULL # Initialize for this model
-          model_run_success <- FALSE
-          model_summary_entry <- list(config = list(), success = FALSE, error = NULL,
-                                      aggregation_level = agg_level, # Store agg level
-                                      frequency_used = NULL, # Store frequency
-                                      arima_order = NULL, # Store ARIMA auto order
-                                      fitted_method = NULL) # Store fitted method string (ETS/TBATS)
+        # --- Parallel Execution with furrr::future_map ---
+        # The progress bar here will just show "Running Forecast..."
+        # Granular progress per model is removed for multisession compatibility.
+        shiny::incProgress(amount = 0.1, detail = paste("Preparing to run", n_models, "models in parallel..."))
 
-      # tryCatch(
-      #   { # Wrap entire process in tryCatch
-          # --- 2. Model Selection & Execution ---
-          # model_name <- active_model_tab # Assuming tab name is model name
-          # message(paste("Attempting to run model:", model_name))
-          model_name <- selected_models_now[i]
-          message(paste("--- Starting Model:", model_name, "---"))
-          current_progress <- (i-1) * progress_inc
-          shiny::incProgress(amount = 0, # Update message first
-                             detail = paste("Running", model_name,"(", i, "of", n_models,")"))
+        all_model_results <- furrr::future_map(
+          .x = selected_models_now, # Iterate over model names
+          .f = function(current_model_name_iter) {
+            # Call the helper function with all necessary evaluated arguments
+            run_single_model_forecasting(
+              model_name_iter = current_model_name_iter,
+              train_df_arg = train_df_val,
+              test_df_arg = test_df_val,
+              full_aggregated_df_arg = full_aggregated_df_val,
+              agg_level_arg = agg_level_val,
+              horizon_arg = horizon_val,
+              current_global_holidays_arg = current_global_holidays_val,
+              model_config_list_arg = model_config_list_val,
+              total_periods_needed_arg = total_periods_needed_val,
+              last_train_date_arg = last_train_date_val,
+              freq_str_arg = freq_str_val,
+              future_dates_for_fcst_arg = future_dates_for_fcst_val,
+              progress_disabled = TRUE # Disable shiny::incProgress within the helper
+            )
+          },
+          .options = furrr_options(seed = TRUE, globals = TRUE) # globals = TRUE for utils, though explicit passing is safer
+                                                              # train_X, forecast_X functions should be found if R/ is sourced by golem.
+        )
+        shiny::incProgress(amount = 0.7, detail = "Processing results from parallel models...")
 
-          forecast_tibble <- NULL # Initialize for this model
-          fitted_values <- NULL # Initialize for this model
-          model_run_success <- FALSE
+        # --- Process Results from future_map ---
+        # Reset lists in 'r' before populating
+        r$forecast_list <- list()
+        r$fitted_list <- list()
+        # temp_summary_list is already initialized
 
-          tryCatch({ # Wrap each model run
-            # --- Preparación de Feriados Específica para el Pronóstico ---
+        for (i in seq_along(all_model_results)) {
+          result <- all_model_results[[i]]
+          current_model_name_from_result <- result$model_name # Get model name from result
+
+          if (!is.null(result$error_message)) {
+            user_friendly_err_msg <- paste0(
+              "Error for ", current_model_name_from_result, " (parallel worker): ", result$error_message,
+              " Review model parameters and data suitability (e.g., stationarity for ARIMA, sufficient data for complex models)."
+            )
+            shiny::showNotification(user_friendly_err_msg, type = "error", duration = 15)
+            temp_summary_list[[current_model_name_from_result]] <- result$model_summary_entry # Already contains error
+          } else if (isTRUE(result$model_summary_entry$success)) {
+            r$forecast_list[[current_model_name_from_result]] <- result$forecast_tibble
+            r$fitted_list[[current_model_name_from_result]] <- result$fitted_values
+            temp_summary_list[[current_model_name_from_result]] <- result$model_summary_entry
+            successful_models <- c(successful_models, current_model_name_from_result)
+            shiny::showNotification(paste(current_model_name_from_result, "forecast (parallel) processed successfully."), type = "message", duration = 5)
+          } else {
+            # Fallback for unexpected case where success is FALSE but no error_message was set
+            fallback_err_msg <- paste0(
+                "An unknown issue occurred with ", current_model_name_from_result,
+                " in parallel worker. Success flag was false but no explicit error message was captured."
+            )
+            shiny::showNotification(fallback_err_msg, type = "warning", duration = 10)
+            temp_summary_list[[current_model_name_from_result]] <- result$model_summary_entry # Store summary, may contain error info
+          }
+        }
+        # --- End Processing Results ---
+
+        req(length(successful_models) > 0, "All selected models failed to produce forecasts in parallel. Please check individual model errors and data.")
+        message(paste("Models processed successfully in parallel:", paste(successful_models, collapse=", ")))
+
+        # Metrics calculation and summary update proceed as before, using 'successful_models'
+        # and data now populated in r$forecast_list, r$fitted_list from the parallel results.
+        # The original for loop for models is now replaced by the future_map and its result processing.
+        # The individual model's tryCatch is inside run_single_model_forecasting.
+        # The shiny::incProgress for individual models is removed/disabled.
+
+            # --- Preparación de Feriados Específica para el Pronóstico --- (This logic is now INSIDE run_single_model_forecasting)
             # Para ARIMA (future_xreg) y GAM (future_holidays_df para generar features)
             future_holidays_df_for_model <- NULL
             if (!is.null(current_global_holidays) && nrow(current_global_holidays) > 0) {
@@ -1215,17 +1303,18 @@ app_server <- function(input, output, session) {
           }) # End inner tryCatch
 
           # Increment progress bar after each model attempt
-          shiny::incProgress(amount = progress_inc)
-          if(model_run_success) {
-            shiny::showNotification(paste(model_name, "forecast complete."), type = "message", duration = 5)
-          } else {
-            # Error notification already shown by tryCatch
-          }
+          # shiny::incProgress(amount = progress_inc) # This is removed as progress is handled differently
+          # if(model_run_success) { # Notifications are now handled after future_map results processing
+          #   shiny::showNotification(paste(model_name, "forecast complete."), type = "message", duration = 5)
+          # } else {
+          #   # Error notification already shown by tryCatch
+          # }
 
-        } # --- End For Loop ---
-      req(length(successful_models) > 0, "All selected models failed to produce forecasts.")
-      message(paste("Models run successfully:", paste(successful_models, collapse=", ")))
-      # --- Metrics Calculation (NEW - Loop through successful models) ---
+        # } # --- End For Loop --- # This is now replaced by future_map processing block
+      # req(length(successful_models) > 0, "All selected models failed to produce forecasts.") # This check is done after processing results
+      # message(paste("Models run successfully:", paste(successful_models, collapse=", "))) # Also done after processing
+
+      # --- Metrics Calculation (Logic remains similar but uses data processed from future_map results) ---
       message("Calculating metrics for successful models...")
       all_metrics_list <- list() # Initialize list to store metrics tables
       # Get actuals once
@@ -1762,6 +1851,440 @@ app_server <- function(input, output, session) {
     })
   })
   # --- End Load Session Logic ---
+
+  # --- Helper Function for Parallel Model Execution ---
+  # This function encapsulates the logic for running a single model's forecast
+  run_single_model_forecasting <- function(
+    model_name_iter, # Renamed to avoid conflict with model_name in outer scope
+    train_df_arg,
+    test_df_arg,
+    full_aggregated_df_arg,
+    agg_level_arg,
+    horizon_arg,
+    current_global_holidays_arg, # Can be NULL
+    model_config_list_arg, # Plain list from reactiveValuesToList(model_config_reactives)
+    total_periods_needed_arg,
+    last_train_date_arg,
+    freq_str_arg,
+    future_dates_for_fcst_arg,
+    # Removed r_reactive_arg as direct modification is not safe in futures
+    # Utility functions (train_arima, etc.) should be available in the future's environment
+    # If not, they might need to be explicitly passed or loaded via .options = furrr_options(globals=...) or by ensuring the package env is loaded
+    # For Golem apps, functions in R/ are typically available.
+    progress_disabled = FALSE # New argument to disable shiny::incProgress if needed
+  ) {
+    message(paste("--- Starting Model (parallel worker):", model_name_iter, "---"))
+
+    forecast_tibble_res <- NULL
+    fitted_values_res <- NULL
+    model_summary_entry_res <- list(
+      model_name = model_name_iter, # Store model name here
+      config = list(),
+      success = FALSE,
+      error = NULL,
+      aggregation_level = agg_level_arg,
+      frequency_used = NULL,
+      arima_order = NULL,
+      fitted_method = NULL,
+      tuned_params = NULL, # For models like XGBoost/RF
+      tuning_enabled = NULL # For models like XGBoost/RF
+    )
+    error_message_res <- NULL
+
+    tryCatch({
+      # --- Preparación de Feriados Específica para el Pronóstico ---
+      future_holidays_df_for_model <- NULL
+      if (!is.null(current_global_holidays_arg) && nrow(current_global_holidays_arg) > 0) {
+        future_holidays_df_for_model <- current_global_holidays_arg %>%
+          dplyr::mutate(ds = as.Date(ds)) %>%
+          dplyr::filter(ds %in% future_dates_for_fcst_arg)
+      }
+
+      # --- Model-Specific Logic ---
+      # Note: Access model_config_list_arg for configurations
+      # e.g., model_config_list_arg$arima_auto, model_config_list_arg$ets_manual etc.
+
+      if (model_name_iter == "ARIMA") {
+        config <- list(
+          auto = model_config_list_arg$arima_auto,
+          p = model_config_list_arg$arima_p,
+          d = model_config_list_arg$arima_d,
+          q = model_config_list_arg$arima_q,
+          seasonal = model_config_list_arg$arima_seasonal,
+          P = model_config_list_arg$arima_P,
+          D = model_config_list_arg$arima_D,
+          Q = model_config_list_arg$arima_Q,
+          period = model_config_list_arg$arima_period
+        )
+        model_summary_entry_res$config <- config # Store config early
+        freq_used <- 1
+        if (isTRUE(config$seasonal)) { # Ensure config$seasonal is logical
+          if (isTRUE(config$auto)) { # Ensure config$auto is logical
+            if (agg_level_arg == "Daily") freq_used <- 7
+            else if (agg_level_arg == "Weekly") freq_used <- 52
+          } else { # Manual seasonal
+            manual_period <- as.integer(config$period)
+            if (!is.na(manual_period) && manual_period > 1) {
+              freq_used <- manual_period
+            } else { # Invalid manual period
+              model_summary_entry_res$error_detail <- "Invalid manual seasonal period (<=1); treated as non-seasonal."
+              # config$seasonal <- FALSE # This modification won't be seen by user unless returned explicitly
+              freq_used <- 1
+            }
+          }
+        }
+        model_summary_entry_res$frequency_used <- freq_used
+
+        model_or_fcst_obj <- train_arima(train_df_arg, config, aggregation_level = agg_level_arg, holidays_df = current_global_holidays_arg)
+        if(is.null(model_or_fcst_obj)) {
+          stop("ARIMA model training returned NULL. Check data stationarity, holidays, or ARIMA parameters (p,d,q,P,D,Q).")
+        }
+
+        future_xreg_arima <- NULL
+        if (!is.null(model_or_fcst_obj$xreg)) {
+          arima_xreg_colnames_from_training <- colnames(model_or_fcst_obj$xreg)
+          if (!is.null(future_holidays_df_for_model) && nrow(future_holidays_df_for_model) > 0 && !is.null(arima_xreg_colnames_from_training)) {
+            future_holiday_dummies <- future_holidays_df_for_model %>%
+              dplyr::mutate(holiday = make.names(holiday), value = 1) %>%
+              tidyr::pivot_wider(names_from = holiday, values_from = value, values_fill = 0)
+
+            future_xreg_df_base <- data.frame(ds = future_dates_for_fcst_arg)
+            for (col_name in arima_xreg_colnames_from_training) {
+              future_xreg_df_base[[col_name]] <- 0
+            }
+
+            if (nrow(future_holiday_dummies) > 0 && ncol(future_holiday_dummies) > 1) {
+              common_cols_to_join <- intersect(names(future_xreg_df_base), names(future_holiday_dummies))
+              cols_from_future_dummies <- setdiff(names(future_holiday_dummies), "ds")
+              temp_join_df <- future_xreg_df_base %>% dplyr::select(ds) %>%
+                dplyr::left_join(future_holiday_dummies %>% dplyr::select(ds, all_of(cols_from_future_dummies)), by = "ds")
+              for(col_h in cols_from_future_dummies) {
+                if(col_h %in% names(future_xreg_df_base) && col_h %in% names(temp_join_df)) {
+                  future_xreg_df_base[[col_h]] <- dplyr::coalesce(temp_join_df[[col_h]], future_xreg_df_base[[col_h]])
+                }
+              }
+            }
+            future_xreg_arima <- future_xreg_df_base %>%
+              dplyr::select(all_of(arima_xreg_colnames_from_training)) %>% as.matrix()
+            if(nrow(future_xreg_arima) != total_periods_needed_arg) stop("Constructed future_xreg_arima rows do not match total_periods_needed.")
+          } else if (!is.null(arima_xreg_colnames_from_training)) {
+             future_xreg_arima <- matrix(0, nrow = total_periods_needed_arg, ncol = length(arima_xreg_colnames_from_training), dimnames = list(NULL, arima_xreg_colnames_from_training))
+          }
+        }
+
+        if (config$auto) {
+          sel_order <- tryCatch({ forecast::arimaorder(model_or_fcst_obj) }, error = function(e_ord){ NULL })
+          model_summary_entry_res$arima_order <- sel_order
+        } else {
+          model_summary_entry_res$arima_order <- NULL
+        }
+        forecast_output <- forecast_arima(model_or_fcst_obj, total_periods_needed_arg, last_train_date_arg, freq_str_arg, future_xreg = future_xreg_arima)
+        forecast_tibble_res <- forecast_output$forecast
+        fitted_values_res <- forecast_output$fitted
+        if(is.null(forecast_tibble_res) || is.null(fitted_values_res)) stop("ARIMA forecast or fitted values are NULL.")
+
+      } else if (model_name_iter == "ETS") {
+        config <- list(
+          manual = model_config_list_arg$ets_manual,
+          ets_e = model_config_list_arg$ets_e,
+          ets_t = model_config_list_arg$ets_t,
+          ets_s = model_config_list_arg$ets_s,
+          ets_damped_str = model_config_list_arg$ets_damped_str
+        )
+        model_summary_entry_res$config <- config
+        model_or_fcst_obj <- train_ets(train_df_arg, config, agg_level_arg, total_periods_needed_arg)
+        if(is.null(model_or_fcst_obj)) {
+          stop("ETS model training returned NULL. Check data characteristics or ETS parameters (Error, Trend, Seasonality).")
+        }
+
+        freq_used <- ifelse(agg_level_arg == "Daily", 7, 52) # This is for STLF, ETS itself handles seasonality
+        model_summary_entry_res$frequency_used <- freq_used # Store frequency if STLF is used
+        if(inherits(model_or_fcst_obj, "ets")) model_summary_entry_res$fitted_method <- model_or_fcst_obj$method
+        if(inherits(model_or_fcst_obj, "forecast") && !is.null(model_or_fcst_obj$model)) {
+           model_summary_entry_res$fitted_method <- model_or_fcst_obj$model$method
+        }
+        forecast_output <- forecast_ets(model_or_fcst_obj, total_periods_needed_arg, last_train_date_arg, freq_str_arg)
+        forecast_tibble_res <- forecast_output$forecast
+        fitted_values_res <- forecast_output$fitted
+        if(is.null(forecast_tibble_res) || is.null(fitted_values_res)) stop("ETS forecast or fitted values are NULL.")
+
+      } else if (model_name_iter == "TBATS") {
+        config <- list() # No specific config from UI yet
+        model_summary_entry_res$config <- config
+        model_or_fcst_obj <- train_tbats(train_df_arg, config, agg_level_arg)
+        if(is.null(model_or_fcst_obj)) stop("TBATS model training returned NULL. This model is robust but may fail with very short or erratic series.")
+        forecast_output <- forecast_tbats(model_or_fcst_obj, total_periods_needed_arg, last_train_date_arg, freq_str_arg)
+        forecast_tibble_res <- forecast_output$forecast
+        fitted_values_res <- forecast_output$fitted
+        model_summary_entry_res$fitted_method <- utils::capture.output(print(model_or_fcst_obj))[1]
+        if(is.null(forecast_tibble_res) || is.null(fitted_values_res)) stop("TBATS forecast or fitted values are NULL.")
+
+      } else if (model_name_iter == "Prophet") {
+        current_growth <- model_config_list_arg$prophet_growth
+        holidays_input <- current_global_holidays_arg # Already prepared
+        regressors_input <- model_config_list_arg$prophet_regressors_df # This would be a string path, need to handle loading if it's complex
+                                                                      # For simplicity, assuming this is handled before calling, or passed as data
+                                                                      # For now, this function expects data, not paths.
+                                                                      # If prophet_regressors_df is the actual df from reactive, it's fine.
+
+        prophet_capacity_val <- if(current_growth == 'logistic') model_config_list_arg$prophet_capacity else NULL
+        if(current_growth == 'logistic' && is.null(prophet_capacity_val)) stop("Prophet 'capacity' value is required for logistic growth but not provided or is NULL.")
+
+        config <- list(
+          yearly = model_config_list_arg$prophet_yearly,
+          weekly = model_config_list_arg$prophet_weekly,
+          daily = model_config_list_arg$prophet_daily,
+          growth = current_growth,
+          changepoint_scale = model_config_list_arg$prophet_changepoint_scale,
+          capacity = prophet_capacity_val, # Can be NULL if not logistic
+          used_holidays = !is.null(holidays_input) && nrow(holidays_input) > 0,
+          used_regressors = !is.null(regressors_input) && ncol(regressors_input) > 1 # Has more than just 'ds'
+        )
+        model_summary_entry_res$config <- config
+
+        prophet_train_df_worker <- train_df_arg
+        if(config$growth == 'logistic'){
+            prophet_train_df_worker$cap <- config$capacity
+        }
+
+        regressor_names_input_worker <- NULL
+        actual_regressors_for_train <- NULL # For train_prophet
+        if(config$used_regressors){
+            regressor_names_input_worker <- setdiff(names(regressors_input), "ds")
+            if(length(regressor_names_input_worker) > 0) {
+                actual_regressors_for_train <- regressors_input
+            } else { # Should not happen if used_regressors is true
+                stop("Prophet: used_regressors is true but no valid regressor columns found.")
+            }
+        }
+
+        model_or_fcst_obj <- train_prophet(prophet_train_df_worker, config, holidays_input, actual_regressors_for_train, regressor_names_input_worker)
+        if(is.null(model_or_fcst_obj)) stop("Prophet model training returned NULL. Check Prophet parameters, holiday/regressor data alignment, or if data is too short.")
+
+        # For forecasting with Prophet, future regressors need to be in future_df
+        future_df_for_prophet <- data.frame(ds = future_dates_for_fcst_arg)
+        if(config$growth == 'logistic') {
+            future_df_for_prophet$cap <- config$capacity
+        }
+        if(config$used_regressors && !is.null(actual_regressors_for_train)) {
+            # Need to ensure future regressors are available and correctly aligned with future_dates_for_fcst_arg
+            # This part is complex if regressors_input is not already prepared for future dates
+            # For now, assume regressors_input (if provided) contains future values aligned by 'ds'
+            # This is a simplification; robust regressor handling needs careful future data prep.
+            future_regressors_prophet <- regressors_input %>% dplyr::filter(ds %in% future_dates_for_fcst_arg)
+            if(nrow(future_regressors_prophet) != length(future_dates_for_fcst_arg) && length(regressor_names_input_worker) > 0) {
+                stop(paste0("Prophet: Mismatch between future dates (", length(future_dates_for_fcst_arg), ") and available future regressor rows (", nrow(future_regressors_prophet), "). Ensure regressors cover the forecast horizon."))
+            }
+            if(nrow(future_regressors_prophet) > 0) {
+                 future_df_for_prophet <- dplyr::left_join(future_df_for_prophet, future_regressors_prophet, by = "ds")
+            }
+        }
+
+        forecast_tibble_res <- forecast_prophet(model_or_fcst_obj, future_df_for_prophet) # Pass prepared future_df
+        if(is.null(forecast_tibble_res) || !is.data.frame(forecast_tibble_res) || !all(c("ds", "yhat") %in% names(forecast_tibble_res))) stop("Prophet forecast is invalid or structure changed.")
+
+        fitted_values_res <- forecast_tibble_res %>% dplyr::filter(ds %in% train_df_arg$ds) %>% dplyr::pull(yhat)
+        if(length(fitted_values_res) != nrow(train_df_arg)) stop("Prophet fitted values length mismatch.")
+
+      } else if (model_name_iter == "XGBoost") {
+        config <- list(
+          nrounds = model_config_list_arg$xgb_nrounds,
+          eta = model_config_list_arg$xgb_eta,
+          max_depth = model_config_list_arg$xgb_max_depth,
+          subsample = model_config_list_arg$xgb_subsample,
+          colsample_bytree = model_config_list_arg$xgb_colsample,
+          gamma = model_config_list_arg$xgb_gamma
+        )
+        enable_xgb_tuning <- model_config_list_arg$xgb_enable_tuning
+        model_summary_entry_res$config <- config # Store original config
+        model_summary_entry_res$tuning_enabled <- enable_xgb_tuning
+
+        unprepared_recipe <- create_tree_recipe(full_aggregated_df_arg, freq_str = freq_str_arg)
+        if(is.null(unprepared_recipe)) stop("XGBoost: Recipe creation failed. Check input data and feature engineering steps.")
+
+        if (isTRUE(enable_xgb_tuning)) {
+          xgb_spec <- parsnip::boost_tree(mode = "regression", engine = "xgboost", mtry = tune::tune(), trees = 1000, min_n = tune::tune(), tree_depth = tune::tune(), learn_rate = tune::tune(), loss_reduction = tune::tune()) %>%
+            parsnip::set_engine("xgboost", objective = "reg:squarederror") # Ensure objective is set
+          xgb_wf <- workflows::workflow() %>% workflows::add_recipe(unprepared_recipe) %>% workflows::add_model(xgb_spec)
+
+          initial_periods <- max(floor(nrow(train_df_arg) * 0.7), 20); assess_periods <- max(floor(nrow(train_df_arg) * 0.1), 5); skip_periods <- max(floor(assess_periods * 0.5), 1)
+          if(initial_periods + assess_periods > nrow(train_df_arg)) { # Adjust if default splits are too large
+             initial_periods <- floor(nrow(train_df_arg) * 0.6); assess_periods <- floor(nrow(train_df_arg) * 0.2); skip_periods <- floor(assess_periods * 0.5)
+             if(initial_periods <= 0 || assess_periods <= 0 || skip_periods < 0) stop("XGBoost (Tuning): Not enough data for time series CV splits even after adjustment. Need more observations.")
+          }
+          ts_cv_splits <- timetk::time_series_cv(data = train_df_arg, date_var = ds, initial = paste(initial_periods, freq_str_arg), assess = paste(assess_periods, freq_str_arg), skip = paste(skip_periods, freq_str_arg), cumulative = FALSE, slice_limit = 5) # Limit slices for speed
+
+          num_features <- tryCatch({ ncol(recipes::bake(recipes::prep(unprepared_recipe, training = train_df_arg), new_data = NULL, has_role("predictor"))) }, error = function(e) { 10 }) # Prep for feature count
+          xgb_params <- dials::parameters(xgb_spec) %>% update(mtry = dials::mtry(range = c(1L, max(1L, floor(num_features * 0.8)))), min_n = dials::min_n(range = c(2L, 20L)), tree_depth = dials::tree_depth(range = c(3L, 10L)), learn_rate = dials::learn_rate(range = c(-2.5, -1.0)), loss_reduction = dials::loss_reduction(range = c(-1.5, 1.5))) # Log10 scale for rates/reductions
+          set.seed(123)
+          xgb_grid <- dials::grid_latin_hypercube(xgb_params, size = 10) # Consider reducing size for faster parallel runs if needed
+
+          tune_results <- tune::tune_grid(object = xgb_wf, resamples = ts_cv_splits, grid = xgb_grid, metrics = yardstick::metric_set(yardstick::rmse), control = tune::control_grid(save_pred = FALSE, verbose = FALSE, allow_par = FALSE)) # allow_par = FALSE for safety inside future
+          best_params <- tune::select_best(tune_results, metric = "rmse")
+          final_xgb_wf <- tune::finalize_workflow(xgb_wf, best_params)
+          final_fit <- parsnip::fit(final_xgb_wf, data = train_df_arg)
+
+          fitted_xgb_model <- workflows::extract_fit_parsnip(final_fit)
+          prep_recipe_from_fit <- workflows::extract_recipe(final_fit, estimated = TRUE)
+          model_summary_entry_res$tuned_params <- best_params
+
+          forecast_tibble_res <- forecast_xgboost(model = fitted_xgb_model$fit, prep_recipe = prep_recipe_from_fit, full_df = full_aggregated_df_arg, train_end_date = last_train_date_arg, total_periods_needed = total_periods_needed_arg, freq = freq_str_arg)
+          if(is.null(forecast_tibble_res)) stop("XGBoost forecast failed after tuning.")
+
+          train_baked_everything_df <- recipes::bake(prep_recipe_from_fit, new_data = train_df_arg, everything())
+          model_features <- fitted_xgb_model$fit$feature_names
+          missing_train_cols <- setdiff(model_features, names(train_baked_everything_df))
+          if (length(missing_train_cols) > 0) stop(paste("XGBoost (tuned): Training data missing features after baking:", paste(missing_train_cols, collapse=", ")))
+          train_matrix <- as.matrix(train_baked_everything_df[, model_features, drop=FALSE])
+          fitted_values_res <- predict(fitted_xgb_model$fit, newdata = train_matrix)
+          if(is.null(fitted_values_res) || length(fitted_values_res) != nrow(train_df_arg)) stop("XGBoost (tuned) fitted values error.")
+
+        } else { # No tuning
+          prep_recipe_xgb <- recipes::prep(unprepared_recipe, training = train_df_arg)
+          if(is.null(prep_recipe_xgb)) stop("XGBoost: Recipe preparation failed (tuning off). Check for issues in feature engineering steps or data compatibility.")
+          model_obj <- train_xgboost(prep_recipe_xgb, config) # config from UI
+          if(is.null(model_obj)) stop("XGBoost model training failed (tuning off). Review XGBoost parameters and data suitability.")
+
+          forecast_tibble_res <- forecast_xgboost(model_obj, prep_recipe_xgb, full_aggregated_df_arg, last_train_date_arg, total_periods_needed_arg, freq_str_arg)
+          if(is.null(forecast_tibble_res)) stop("XGBoost forecast generation failed (tuning off).")
+
+          # Get fitted values for non-tuned XGBoost
+          train_baked_df <- recipes::bake(prep_recipe_xgb, new_data = train_df_arg, recipes::all_predictors(), recipes::all_outcomes()) # Bake necessary parts
+          model_features <- model_obj$feature_names
+          missing_cols <- setdiff(model_features, names(train_baked_df))
+          if (length(missing_cols) > 0) stop(paste("XGBoost (tuning off): Training data missing features after baking for fitted values:", paste(missing_cols, collapse=", ")))
+
+          # Ensure only predictor columns are used and in correct order for predict()
+          train_matrix <- as.matrix(train_baked_df[, model_features, drop = FALSE])
+          fitted_values_res <- predict(model_obj, train_matrix)
+          if(is.null(fitted_values_res) || length(fitted_values_res) != nrow(train_df_arg)) stop("XGBoost fitted values calculation failed or length mismatch (tuning off).")
+          model_summary_entry_res$tuned_params <- NULL
+        }
+
+      } else if (model_name_iter == "GAM") {
+        config <- list(
+          smooth_trend = model_config_list_arg$gam_trend_type == "smooth",
+          use_season_y = model_config_list_arg$gam_use_season_y,
+          use_season_w = model_config_list_arg$gam_use_season_w
+        )
+        model_summary_entry_res$config <- config
+        model_obj <- train_gam(train_df_arg, config, holidays_df = current_global_holidays_arg)
+        if(is.null(model_obj)) stop("GAM model training returned NULL. Check GAM parameters, data, or holiday specification.")
+        forecast_output <- forecast_gam(model_obj, train_df_arg, total_periods_needed_arg, freq_str_arg, config, holidays_df = current_global_holidays_arg) # Pass prepared future holidays if needed by forecast_gam
+        forecast_tibble_res <- forecast_output$forecast
+        fitted_values_res <- forecast_output$fitted
+        if(is.null(forecast_tibble_res) || is.null(fitted_values_res)) stop("GAM forecast or fitted values are NULL.")
+
+      } else if (model_name_iter == "RF") {
+        config <- list(
+          rf_num_trees = model_config_list_arg$rf_num_trees,
+          rf_mtry = model_config_list_arg$rf_mtry,
+          rf_min_node_size = model_config_list_arg$rf_min_node_size
+        )
+        enable_rf_tuning <- model_config_list_arg$rf_enable_tuning
+        model_summary_entry_res$config <- config # Store original config
+        model_summary_entry_res$tuning_enabled <- enable_rf_tuning
+
+        unprepared_recipe_rf <- create_tree_recipe(full_aggregated_df_arg, freq_str = freq_str_arg)
+        if(is.null(unprepared_recipe_rf)) stop("Random Forest: Recipe creation failed. Check input data and feature engineering steps.")
+
+        if (isTRUE(enable_rf_tuning)) {
+          rf_spec <- parsnip::rand_forest(mode = "regression", engine = "ranger", mtry = tune::tune(), trees = 500, min_n = tune::tune()) %>% # num.threads = 1 for ranger is good for futures
+            parsnip::set_engine("ranger", importance = "impurity", num.threads = 1)
+          rf_wf <- workflows::workflow() %>% workflows::add_recipe(unprepared_recipe_rf) %>% workflows::add_model(rf_spec)
+
+          initial_periods_rf <- max(floor(nrow(train_df_arg) * 0.7), 20); assess_periods_rf <- max(floor(nrow(train_df_arg) * 0.1), 5); skip_periods_rf <- max(floor(assess_periods_rf * 0.5), 1)
+          if(initial_periods_rf + assess_periods_rf > nrow(train_df_arg)) { # Adjust if default splits are too large
+             initial_periods_rf <- floor(nrow(train_df_arg) * 0.6); assess_periods_rf <- floor(nrow(train_df_arg) * 0.2); skip_periods_rf <- floor(assess_periods_rf * 0.5)
+             if(initial_periods_rf <= 0 || assess_periods_rf <= 0 || skip_periods_rf < 0) stop("Random Forest (Tuning): Not enough data for time series CV splits even after adjustment.")
+          }
+          ts_cv_splits_rf <- timetk::time_series_cv(data = train_df_arg, date_var = ds, initial = paste(initial_periods_rf, freq_str_arg), assess = paste(assess_periods_rf, freq_str_arg), skip = paste(skip_periods_rf, freq_str_arg), cumulative = FALSE, slice_limit = 5) # Limit slices
+
+          num_features_rf <- tryCatch({ ncol(recipes::bake(recipes::prep(unprepared_recipe_rf, training = train_df_arg), new_data = NULL, has_role("predictor"))) }, error = function(e) { 10 }) # Prep for feature count
+          rf_params <- dials::parameters(rf_spec) %>% update(mtry = dials::mtry(range = c(1L, max(1L, floor(num_features_rf * 0.8)))), min_n = dials::min_n(range = c(2L, 20L)))
+          set.seed(456)
+          rf_grid <- dials::grid_latin_hypercube(rf_params, size = 10) # Consider reducing size
+
+          rf_tune_results <- tune::tune_grid(object = rf_wf, resamples = ts_cv_splits_rf, grid = rf_grid, metrics = yardstick::metric_set(yardstick::rmse), control = tune::control_grid(save_pred = FALSE, verbose = FALSE, allow_par = FALSE))
+          best_rf_params <- tune::select_best(rf_tune_results, metric = "rmse")
+          final_rf_wf <- tune::finalize_workflow(rf_wf, best_rf_params)
+          final_rf_fit <- parsnip::fit(final_rf_wf, data = train_df_arg)
+
+          fitted_rf_model <- workflows::extract_fit_parsnip(final_rf_fit)
+          prep_recipe_rf_from_fit <- workflows::extract_recipe(final_rf_fit, estimated = TRUE)
+          model_summary_entry_res$tuned_params <- best_rf_params
+
+          forecast_output_rf <- forecast_rf(model = fitted_rf_model$fit, prep_recipe = prep_recipe_rf_from_fit, full_df = full_aggregated_df_arg, train_df = train_df_arg, train_end_date = last_train_date_arg, total_periods_needed = total_periods_needed_arg, freq_str = freq_str_arg)
+          if(is.null(forecast_output_rf)) stop("RF forecast_rf returned NULL after tuning.")
+          forecast_tibble_res <- forecast_output_rf$forecast
+          fitted_values_res <- forecast_output_rf$fitted
+          if(is.null(forecast_tibble_res) || is.null(fitted_values_res)) stop("RF forecast or fitted values are NULL after tuning.")
+
+        } else { # No tuning for RF
+          prep_recipe_rf <- recipes::prep(unprepared_recipe_rf, training = train_df_arg)
+          if(is.null(prep_recipe_rf)) stop("Random Forest: Recipe preparation failed (tuning off). Check feature engineering or data compatibility.")
+          model_obj_rf <- train_rf(prep_recipe_rf, config) # config from UI
+          if(is.null(model_obj_rf)) stop("Random Forest training failed (tuning off). Review RF parameters and data.")
+
+          forecast_output_rf <- forecast_rf(model_obj_rf, prep_recipe_rf, full_aggregated_df_arg, train_df_arg, last_train_date_arg, total_periods_needed_arg, freq_str_arg)
+          if(is.null(forecast_output_rf)) stop("Random Forest forecast generation failed (tuning off).")
+          forecast_tibble_res <- forecast_output_rf$forecast
+          fitted_values_res <- forecast_output_rf$fitted # Fitted values come from forecast_rf
+          if(is.null(forecast_tibble_res) || is.null(fitted_values_res)) stop("Random Forest forecast or fitted values are NULL (tuning off).")
+          model_summary_entry_res$tuned_params <- NULL
+        }
+      } else if (model_name_iter == "NNETAR") {
+        config_nnetar <- list(
+          nnetar_p = model_config_list_arg$nnetar_p,
+          nnetar_P = model_config_list_arg$nnetar_P,
+          nnetar_size_method = model_config_list_arg$nnetar_size_method,
+          nnetar_size_manual = model_config_list_arg$nnetar_size_manual,
+          nnetar_repeats = model_config_list_arg$nnetar_repeats,
+          nnetar_lambda_auto = model_config_list_arg$nnetar_lambda_auto,
+          nnetar_lambda_manual = model_config_list_arg$nnetar_lambda_manual
+        )
+        model_summary_entry_res$config <- config_nnetar
+
+        model_obj_nnetar <- train_nnetar(train_df_arg, config_nnetar, agg_level_arg)
+        if(is.null(model_obj_nnetar)) stop("NNETAR training returned NULL. Check NNETAR parameters (p, P, size) and data characteristics.")
+
+        if (!is.null(attr(model_obj_nnetar, "frequency_used"))) { # Capture frequency if set by train_nnetar
+          model_summary_entry_res$frequency_used <- attr(model_obj_nnetar, "frequency_used")
+        }
+        model_summary_entry_res$fitted_method <- utils::capture.output(print(model_obj_nnetar))[1]
+
+        forecast_output_nnetar <- forecast_nnetar(model_obj_nnetar, total_periods_needed_arg, last_train_date_arg, freq_str_arg)
+        if(is.null(forecast_output_nnetar)) stop("NNETAR forecast_nnetar returned NULL.")
+
+        forecast_tibble_res <- forecast_output_nnetar$forecast
+        fitted_values_res <- forecast_output_nnetar$fitted # Can be NULL or shorter, handled in metrics
+        if(is.null(forecast_tibble_res)) stop("NNETAR forecast data frame is NULL.")
+        # No explicit stop for NULL fitted_values_res here, as NNETAR can have this behavior.
+      } else {
+        stop(paste("Unknown model_name_iter:", model_name_iter))
+      }
+
+      model_summary_entry_res$success <- TRUE
+      message(paste("--- Finished Model (parallel worker):", model_name_iter, "Successfully ---"))
+
+    }, error = function(e) {
+      error_message_res <<- paste0( # Assign to outer scope error_message_res
+         model_name_iter, " model error: ", conditionMessage(e),
+        " Check model's specific parameters, data suitability (e.g., length, variance, stationarity), and any holiday/regressor configurations."
+      )
+      model_summary_entry_res$success <<- FALSE
+      model_summary_entry_res$error <<- conditionMessage(e)
+    }) # End tryCatch for individual model
+
+    return(list(
+      model_name = model_name_iter, # Return the original model name
+      forecast_tibble = forecast_tibble_res,
+      fitted_values = fitted_values_res,
+      model_summary_entry = model_summary_entry_res,
+      error_message = error_message_res # This will be NULL if no error
+    ))
+  }
+  # --- End Helper Function ---
 
   # --- Validation Module Server Call ---
   mod_validation_server(

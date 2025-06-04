@@ -68,6 +68,7 @@ mod_data_input_ui <- function(id){
 #' @importFrom utils read.csv head
 #' @importFrom magrittr %>%
 #' @importFrom DT renderDT datatable DTOutput
+#' @import data.table
 mod_data_input_server <- function(id){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
@@ -97,36 +98,43 @@ mod_data_input_server <- function(id){
       req(input$fileUpload)
       message("File upload triggered.") # Debug message
 
-      trigger <- input$fileUpload
-      ext <- tools::file_ext(trigger$name)
+      shiny::withProgress(message = 'Loading uploaded file...', value = 0, {
+        shiny::incProgress(0.1, detail = "Reading file...")
+        trigger <- input$fileUpload
+        ext <- tools::file_ext(trigger$name)
 
-      df <- tryCatch({
-        if (ext == "csv") {
-          message("Reading CSV file from upload.") # Debug message
-          utils::read.csv(trigger$datapath, stringsAsFactors = FALSE)
-        } else if (ext == "xlsx") {
-          message("Reading Excel file from upload.") # Debug message
-          readxl::read_excel(trigger$datapath)
+        df <- tryCatch({
+          if (ext == "csv") {
+            message("Reading CSV file from upload using data.table::fread.") # Debug message
+            data.table::fread(trigger$datapath, stringsAsFactors = FALSE, data.table = FALSE)
+          } else if (ext == "xlsx") {
+            message("Reading Excel file from upload.") # Debug message
+            readxl::read_excel(trigger$datapath)
+          } else {
+            stop(paste0("Unsupported file type: '.", ext, "'. Please upload a .csv or .xlsx file."))
+          }
+        }, error = function(e) {
+          user_message <- paste0("Error reading file '", trigger$name, "'. Ensure it is a valid CSV or XLSX file, not corrupted, and the extension matches the content. Specific error: ", conditionMessage(e))
+          shiny::showNotification(user_message, type = "error", duration = 15)
+          message(user_message)
+          return(NULL)
+        })
+
+        shiny::incProgress(0.7, detail = "Validating data structure...")
+        if (!is.null(df)) {
+          if (ncol(df) < 2) {
+            shiny::showNotification("Data must have at least two columns (one for dates, one for values).", type = "error", duration = 10)
+            reactive_df_data(NULL)
+          } else {
+            shiny::showNotification("File uploaded successfully!", type = "message", duration = 5)
+            message(paste("Successfully read uploaded file. Dimensions:", nrow(df), "rows,", ncol(df), "columns."))
+            reactive_df_data(df)
+          }
         } else {
-          stop("Unsupported file type. Please upload a .csv or .xlsx file.")
+          reactive_df_data(NULL) # Set to NULL if reading failed (error already shown)
         }
-      }, error = function(e) {
-        shiny::showNotification(
-          paste("Error reading uploaded file:", e$message),
-          type = "error",
-          duration = 10
-        )
-        message(paste("Error reading uploaded file:", e$message)) # Debug message
-        return(NULL)
-      })
-
-      if (!is.null(df)) {
-        shiny::showNotification("File uploaded successfully!", type = "message", duration = 5)
-        message(paste("Successfully read uploaded file. Dimensions:", nrow(df), "rows,", ncol(df), "columns.")) # Debug message
-        reactive_df_data(df) # Update the reactiveVal with the dataframe
-      } else {
-        reactive_df_data(NULL) # Set to NULL if reading failed
-      }
+        shiny::incProgress(1, detail = "Load complete.")
+      }) # End withProgress
     })
 
     # --- Observer for Load Default Button ---
@@ -140,33 +148,40 @@ mod_data_input_server <- function(id){
       )
       message(paste("Selected default file:", selected_file_name)) # Debug message
 
-      # Construct path using app_sys and the selected filename
-      default_file_path <- app_sys("extdata", selected_file_name)
+      shiny::withProgress(message = 'Loading default dataset...', value = 0, {
+        shiny::incProgress(0.1, detail = "Locating file...")
+        # Construct path using app_sys and the selected filename
+        default_file_path <- app_sys("extdata", selected_file_name)
 
-      validate(
-        need(file.exists(default_file_path), paste("Selected default data file not found at:", default_file_path))
-      )
-
-      df <- tryCatch({
-        message(paste("Reading selected default CSV file:", selected_file_name)) # Debug message
-        utils::read.csv(default_file_path, stringsAsFactors = FALSE)
-      }, error = function(e) {
-        shiny::showNotification(
-          paste("Error reading selected default file:", e$message),
-          type = "error",
-          duration = 10
+        validate(
+          need(file.exists(default_file_path), paste("Selected default data file not found at:", default_file_path))
         )
-        message(paste("Error reading selected default file:", e$message)) # Debug message
-        return(NULL)
-      })
+        shiny::incProgress(0.3, detail = "Reading file...")
+        df <- tryCatch({
+          message(paste("Reading selected default CSV file:", selected_file_name, "using data.table::fread")) # Debug message
+          data.table::fread(default_file_path, stringsAsFactors = FALSE, data.table = FALSE)
+        }, error = function(e) {
+          user_message <- paste0("Error reading default dataset '", selected_file_name, "'. Ensure the file is a valid CSV and not corrupted. Specific error: ", conditionMessage(e))
+          shiny::showNotification(user_message, type = "error", duration = 15)
+          message(user_message)
+          return(NULL)
+        })
 
-      if (!is.null(df)) {
-        shiny::showNotification("Selected default dataset loaded successfully!", type = "message", duration = 5)
-        message(paste("Successfully read selected default file. Dimensions:", nrow(df), "rows,", ncol(df), "columns.")) # Debug message
-        reactive_df_data(df) # Update the reactiveVal with the dataframe
-      } else {
-        reactive_df_data(NULL) # Set to NULL if reading failed
-      }
+        shiny::incProgress(0.7, detail = "Validating data structure...")
+        if (!is.null(df)) {
+          if (ncol(df) < 2) {
+            shiny::showNotification(paste0("Default dataset '", selected_file_name, "' must have at least two columns."), type = "error", duration = 10)
+            reactive_df_data(NULL)
+          } else {
+            shiny::showNotification("Selected default dataset loaded successfully!", type = "message", duration = 5)
+            message(paste("Successfully read selected default file. Dimensions:", nrow(df), "rows,", ncol(df), "columns."))
+            reactive_df_data(df)
+          }
+        } else {
+          reactive_df_data(NULL) # Set to NULL if reading failed (error already shown)
+        }
+        shiny::incProgress(1, detail = "Load complete.")
+      }) # End withProgress
     })
 
     # --- Observer to update column selectors when data changes ---
