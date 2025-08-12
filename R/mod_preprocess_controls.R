@@ -66,82 +66,92 @@ mod_preprocess_controls_server <- function(id, data_input_reactives){
       req(data_input_reactives$reactive_df())
       req(data_input_reactives$reactive_date_col())
       req(data_input_reactives$reactive_value_col())
-      raw_df <- data_input_reactives$reactive_df()
-      date_col <- data_input_reactives$reactive_date_col()
-      value_col <- data_input_reactives$reactive_value_col()
-      validate(
-        need(date_col %in% names(raw_df), paste("Date column '", date_col, "' not found.")),
-        need(value_col %in% names(raw_df), paste("Value column '", value_col, "' not found."))
-      )
-      df_processed <- tryCatch({
-        raw_df %>%
-          dplyr::select(ds = !!rlang::sym(date_col), y = !!rlang::sym(value_col)) %>%
-          dplyr::mutate(ds = lubridate::as_date(ds)) %>%
-          dplyr::mutate(y = as.numeric(y)) %>%
-          dplyr::filter(!is.na(ds), !is.na(y)) %>%
-          dplyr::arrange(ds) %>%
-          dplyr::distinct(ds, .keep_all = TRUE)
-      }, error = function(e) {
-        shiny::showNotification(paste("Error during data cleaning:", e$message), type = "error", duration = 10)
-        return(dplyr::tibble(ds = as.Date(character()), y = numeric()))
-      })
-      validate(
-        need(nrow(df_processed) > 0, "No valid data rows remaining after cleaning (check date/value formats and NAs)."),
-        need(inherits(df_processed$ds, "Date"), "Date column conversion failed."),
-        need(is.numeric(df_processed$y), "Value column conversion to numeric failed.")
-      )
-      return(df_processed)
+
+      shiny::withProgress(message = 'Cleaning data...', value = 0.3, {
+        raw_df <- data_input_reactives$reactive_df()
+        date_col <- data_input_reactives$reactive_date_col()
+        value_col <- data_input_reactives$reactive_value_col()
+
+        validate(
+          need(date_col %in% names(raw_df), paste("Date column '", date_col, "' not found.")),
+          need(value_col %in% names(raw_df), paste("Value column '", value_col, "' not found."))
+        )
+
+        shiny::incProgress(0.4, detail = "Selecting, converting, and filtering...")
+
+        df_processed <- tryCatch({
+          raw_df %>%
+            dplyr::select(ds = !!rlang::sym(date_col), y = !!rlang::sym(value_col)) %>%
+            dplyr::mutate(ds = lubridate::as_date(ds)) %>%
+            dplyr::mutate(y = as.numeric(y)) %>%
+            dplyr::filter(!is.na(ds), !is.na(y)) %>%
+            dplyr::arrange(ds) %>%
+            dplyr::distinct(ds, .keep_all = TRUE)
+        }, error = function(e) {
+          shiny::showNotification(paste("Error during data cleaning:", e$message), type = "error", duration = 10)
+          return(dplyr::tibble(ds = as.Date(character()), y = numeric()))
+        })
+
+        shiny::incProgress(0.3, detail = "Validating results...")
+
+        validate(
+          need(nrow(df_processed) > 0, "No valid data rows remaining after cleaning (check date/value formats and NAs)."),
+          need(inherits(df_processed$ds, "Date"), "Date column conversion failed."),
+          need(is.numeric(df_processed$y), "Value column conversion to numeric failed.")
+        )
+
+        return(df_processed)
+      }) # End withProgress
     })
 
     aggregated_data <- reactive({
       req(cleaned_data())
-      clean_df <- cleaned_data()
-      agg_level <- input$aggregationLevel
 
-      validate(need(nrow(clean_df) > 0, "Cannot aggregate empty data."))
+      shiny::withProgress(message = 'Aggregating data...', value = 0.5, {
+        clean_df <- cleaned_data()
+        agg_level <- input$aggregationLevel
 
-      if (agg_level == "Weekly") {
-        req(input$aggregationFunc) # Require function selection if Weekly
-        agg_func_selected <- input$aggregationFunc
+        validate(need(nrow(clean_df) > 0, "Cannot aggregate empty data."))
 
-        # Remove the line: agg_func_sym <- rlang::sym(agg_func_selected)
+        if (agg_level == "Weekly") {
+          req(input$aggregationFunc) # Require function selection if Weekly
+          agg_func_selected <- input$aggregationFunc
 
-        validate(need(agg_func_selected %in% c("mean", "sum"), "Invalid aggregation function selected."))
+          validate(need(agg_func_selected %in% c("mean", "sum"), "Invalid aggregation function selected."))
 
-        df_agg <- tryCatch({
-          grouped_df <- clean_df %>%
-            dplyr::group_by(ds = lubridate::floor_date(ds, "week", week_start = getOption("lubridate.week.start", 1)))
+          shiny::incProgress(0.3, detail = paste("Applying weekly", agg_func_selected))
 
-          # --- Use if/else based on selected function ---
-          if (agg_func_selected == "mean") {
-            summary_df <- grouped_df %>%
-              dplyr::summarise(y = mean(y, na.rm = TRUE), .groups = 'drop')
-          } else if (agg_func_selected == "sum") {
-            summary_df <- grouped_df %>%
-              dplyr::summarise(y = sum(y, na.rm = TRUE), .groups = 'drop')
-          } else {
-            # This case should ideally not happen due to the selectInput choices,
-            # but it's good practice to handle unexpected values.
-            stop("Unsupported aggregation function specified.") # This will be caught by tryCatch
-          }
-          # --- End if/else ---
+          df_agg <- tryCatch({
+            grouped_df <- clean_df %>%
+              dplyr::group_by(ds = lubridate::floor_date(ds, "week", week_start = getOption("lubridate.week.start", 1)))
 
-          summary_df %>% dplyr::arrange(ds) # Arrange after summarising
+            if (agg_func_selected == "mean") {
+              summary_df <- grouped_df %>%
+                dplyr::summarise(y = mean(y, na.rm = TRUE), .groups = 'drop')
+            } else if (agg_func_selected == "sum") {
+              summary_df <- grouped_df %>%
+                dplyr::summarise(y = sum(y, na.rm = TRUE), .groups = 'drop')
+            } else {
+              stop("Unsupported aggregation function specified.")
+            }
 
-        }, error = function(e){
-          shiny::showNotification(
-            # The error message 'e$message' will now be more direct if stop() is called above
-            paste("Error during weekly aggregation:", e$message), type = "error", duration = 10
-          )
-          return(dplyr::tibble(ds = as.Date(character()), y = numeric()))
-        })
+            summary_df %>% dplyr::arrange(ds)
 
-        validate(need(nrow(df_agg) > 0, "Weekly aggregation resulted in empty data."))
-        return(df_agg)
+          }, error = function(e){
+            shiny::showNotification(
+              paste("Error during weekly aggregation:", e$message), type = "error", duration = 10
+            )
+            return(dplyr::tibble(ds = as.Date(character()), y = numeric()))
+          })
 
-      } else { # Daily aggregation (no change)
-        return(clean_df)
-      }
+          validate(need(nrow(df_agg) > 0, "Weekly aggregation resulted in empty data."))
+          return(df_agg)
+
+        } else { # Daily aggregation (no change)
+          shiny::incProgress(0.5, detail = "Using daily data")
+          return(clean_df)
+        }
+      }) # End withProgress
     })
 
     split_index <- reactive({

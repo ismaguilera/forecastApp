@@ -65,7 +65,8 @@ mod_data_input_ui <- function(id){
 #' @import dplyr
 #' @import lubridate
 #' @importFrom tools file_ext
-#' @importFrom utils read.csv head
+#' @importFrom data.table fread
+#' @importFrom utils head
 #' @importFrom magrittr %>%
 #' @importFrom DT renderDT datatable DTOutput
 mod_data_input_server <- function(id){
@@ -102,8 +103,8 @@ mod_data_input_server <- function(id){
 
       df <- tryCatch({
         if (ext == "csv") {
-          message("Reading CSV file from upload.") # Debug message
-          utils::read.csv(trigger$datapath, stringsAsFactors = FALSE)
+          message("Reading CSV file from upload using data.table::fread.") # Debug message
+          as.data.frame(data.table::fread(trigger$datapath, stringsAsFactors = FALSE))
         } else if (ext == "xlsx") {
           message("Reading Excel file from upload.") # Debug message
           readxl::read_excel(trigger$datapath)
@@ -148,8 +149,8 @@ mod_data_input_server <- function(id){
       )
 
       df <- tryCatch({
-        message(paste("Reading selected default CSV file:", selected_file_name)) # Debug message
-        utils::read.csv(default_file_path, stringsAsFactors = FALSE)
+        message(paste("Reading selected default CSV file with fread:", selected_file_name)) # Debug message
+        as.data.frame(data.table::fread(default_file_path, stringsAsFactors = FALSE))
       }, error = function(e) {
         shiny::showNotification(
           paste("Error reading selected default file:", e$message),

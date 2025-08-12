@@ -18,6 +18,8 @@ Imports:
     dplyr,
     DT,
     forecast,
+    future,
+    furrr,
     ggplot2,
     golem,
     httpuv,
