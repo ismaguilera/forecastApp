@@ -1270,37 +1270,38 @@ app_server <- function(input, output, session) {
             model_run_success <- TRUE
             message(paste("--- Finished Model:", model_name, "Successfully ---"))
 
-          }, error = function(e){ # Catch error for INDIVIDUAL model
-              user_friendly_message <- paste0(
-                "Error during ", model_name, " model processing. ",
-                "Please check this model's configuration and input data suitability. ",
-                "Specific error: ", conditionMessage(e)
-              )
-              warning(paste("Error running model", model_name, ":", conditionMessage(e))) # Keep for server logs
-              shiny::showNotification(user_friendly_message, type = "warning", duration = 10)
+        }, error = function(e){ # Catch error for INDIVIDUAL model
+            user_friendly_message <- paste0(
+              "Error during ", model_name, " model processing. ",
+              "Please check this model's configuration and input data suitability. ",
+              "Specific error: ", conditionMessage(e)
+            )
+            warning(paste("Error running model", model_name, ":", conditionMessage(e))) # Keep for server logs
+            shiny::showNotification(user_friendly_message, type = "warning", duration = 10)
 
-              # Reset results for THIS model specifically if needed, though current logic
-              # of not assigning to r$forecast_list etc. for this model is correct.
-              # model_success <<- FALSE # This assignment might not be needed if not used elsewhere before loop ends
-              model_summary_entry$success <- FALSE
-              model_summary_entry$error <- conditionMessage(e)
-              temp_summary_list[[model_name]] <- model_summary_entry # Store error info
+            # Reset results for THIS model specifically if needed, though current logic
+            # of not assigning to r$forecast_list etc. for this model is correct.
+            # model_success <<- FALSE # This assignment might not be needed if not used elsewhere before loop ends
+            model_summary_entry$success <- FALSE
+            model_summary_entry$error <- conditionMessage(e)
+            temp_summary_list[[model_name]] <- model_summary_entry # Store error info
 
-              # Print error object to console for detailed debugging
-              print(paste("ERROR during forecast execution for model:", model_name, "at", Sys.time()))
-              print("--- Full Error Object (Individual Model) ---")
-              print(e)
-              print("--- End Error Object (Individual Model) ---")
+            # Print error object to console for detailed debugging
+            print(paste("ERROR during forecast execution for model:", model_name, "at", Sys.time()))
+            print("--- Full Error Object (Individual Model) ---")
+            print(e)
+            print("--- End Error Object (Individual Model) ---")
 
-              if (model_name == "GAM") {
-                message("--- DETAILED GAM ERROR in app_server ---")
-                print(e) # Print the full error object 'e'
-                message(paste("GAM error conditionMessage:", conditionMessage(e)))
-                message(paste("GAM error conditionCall:", conditionCall(e)))
-                message("--- END DETAILED GAM ERROR ---")
-              }
+            if (model_name == "GAM") {
+              message("--- DETAILED GAM ERROR in app_server ---")
+              print(e) # Print the full error object 'e'
+              message(paste("GAM error conditionMessage:", conditionMessage(e)))
+              message(paste("GAM error conditionCall:", conditionCall(e)))
+              message("--- END DETAILED GAM ERROR ---")
+            }
 
           }) # End inner tryCatch
+          
 
           # Increment progress bar after each model attempt
           # shiny::incProgress(amount = progress_inc) # This is removed as progress is handled differently
@@ -2517,5 +2518,5 @@ app_server <- function(input, output, session) {
   )
   # --- End Report Generation ---
 
-}) # End app_server
-}
+} # End app_server
+
