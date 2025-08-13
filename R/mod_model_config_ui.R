@@ -11,11 +11,11 @@ mod_model_config_ui <- function(id){
   default_horizon <- get_golem_config("forecast_horizon_default") # Returns 150 by default
   tagList(
     useShinyjs(), # Initialize shinyjs
-    h4("Model Configuration"),
+    h4(textOutput(ns("title_model_config"))),
     sidebarLayout(
       sidebarPanel(
         width = 3,
-        h5("Select Models to Run:"),
+        h5(textOutput(ns("title_select_models"))),
         checkboxInput(ns("use_arima"), "ARIMA", value = TRUE),
         checkboxInput(ns("use_ets"), "ETS", value = TRUE),
         checkboxInput(ns("use_tbats"), "TBATS", value = TRUE),
@@ -30,13 +30,13 @@ mod_model_config_ui <- function(id){
       ),
       mainPanel(
         width = 9,
-        h5("Configure Model Parameters:"),
+        h5(textOutput(ns("title_config_params"))),
         bslib::accordion( # Using accordion for model parameters
           id = ns("modelParamsAccordion"), # Add an ID if needed for control
           multiple = FALSE, # Allow only one panel open at a time
           # ARIMA Panel
           bslib::accordion_panel(
-            title = "ARIMA Parameters",
+            title = textOutput(ns("title_arima_params"), inline = TRUE),
             value = "ARIMA", # Value for conditional logic if needed
             checkboxInput(ns("arima_auto"), "Auto ARIMA (auto.arima)", value = TRUE),
             conditionalPanel(
@@ -56,7 +56,7 @@ mod_model_config_ui <- function(id){
           ),
           # ETS Panel
           bslib::accordion_panel(
-            title = "ETS Parameters",
+            title = textOutput(ns("title_ets_params"), inline = TRUE),
             value = "ETS",
             checkboxInput(ns("ets_manual"), "Manual ETS Configuration", value = FALSE),
             conditionalPanel(
@@ -69,13 +69,13 @@ mod_model_config_ui <- function(id){
           ),
           # TBATS Panel
           bslib::accordion_panel(
-            title = "TBATS Parameters",
+            title = textOutput(ns("title_tbats_params"), inline = TRUE),
             value = "TBATS",
-            tags$p("TBATS model is run with automatic parameter selection.")
+            p(textOutput(ns("text_tbats_auto")))
           ),
           # Prophet Panel
           bslib::accordion_panel(
-            title = "Prophet Parameters",
+            title = textOutput(ns("title_prophet_params"), inline = TRUE),
             value = "Prophet",
             checkboxInput(ns("prophet_yearly"), "Yearly Seasonality", value = TRUE),
             checkboxInput(ns("prophet_weekly"), "Weekly Seasonality", value = TRUE),
@@ -90,7 +90,7 @@ mod_model_config_ui <- function(id){
           ),
           # XGBoost Panel
           bslib::accordion_panel(
-            title = "XGBoost Parameters",
+            title = textOutput(ns("title_xgboost_params"), inline = TRUE),
             value = "XGBoost",
             checkboxInput(ns("xgb_enable_tuning"), "Enable Hyperparameter Tuning", value = TRUE),
             numericInput(ns("xgb_nrounds"), "Number of Rounds (Trees):", value = 100, min = 10, max = 2000, step = 10),
@@ -102,7 +102,7 @@ mod_model_config_ui <- function(id){
           ),
           # Random Forest Panel
           bslib::accordion_panel(
-            title = "Random Forest Parameters",
+            title = textOutput(ns("title_rf_params"), inline = TRUE),
             value = "RF",
             checkboxInput(ns("rf_enable_tuning"), "Enable Hyperparameter Tuning", value = TRUE),
             numericInput(ns("rf_num_trees"), "Number of Trees:", value = 500, min = 50, max = 2000, step = 50),
@@ -111,7 +111,7 @@ mod_model_config_ui <- function(id){
           ),
           # GAM Panel
           bslib::accordion_panel(
-            title = "GAM Parameters",
+            title = textOutput(ns("title_gam_params"), inline = TRUE),
             value = "GAM",
             selectInput(ns("gam_trend_type"), "Trend Type:", choices = c("Linear" = "linear", "Smooth (Spline)" = "smooth"), selected = "linear"),
             checkboxInput(ns("gam_use_season_y"), "Include Yearly Seasonality (Day of Year)", value = TRUE),
@@ -119,25 +119,25 @@ mod_model_config_ui <- function(id){
           ),
           # NNETAR Panel
           bslib::accordion_panel(
-            title = "NNETAR Parameters", 
-            value = "NNETAR", 
+            title = textOutput(ns("title_nnetar_params"), inline = TRUE),
+            value = "NNETAR",
             # icon = icon("brain"), // Example icon
             id = ns("nnetar_accordion_panel"),
             conditionalPanel(
               condition = paste0("input['", ns("use_nnetar"), "'] == true"),
-              tags$p("Neural Network Autoregressive Model. Predicts based on lagged values of the time series."),
+              p(textOutput(ns("text_nnetar_desc"))),
               hr(),
-              h5("Model Structure:"),
+              h5(textOutput(ns("title_nnetar_structure"))),
               fluidRow(
                 column(6, numericInput(ns("nnetar_p"), "Non-seasonal lags (p) (0 for auto if P=0, or specify e.g., 1, 2)", value = 1, min = 0, step = 1, width = '100%')),
                 column(6, numericInput(ns("nnetar_P"), "Seasonal lags (P) (0 for non-seasonal, or specify e.g., 1, 2 for seasonal)", value = 1, min = 0, step = 1, width = '100%'))
               ),
-              helpText("Set p/P to 0 to let nnetar choose automatically. If both >0, specific lags are used. Seasonal P is only effective if data frequency > 1 (e.g., daily/weekly)."),
+              helpText(textOutput(ns("help_nnetar_lags"))),
               fluidRow(
-                column(6, 
-                       selectInput(ns("nnetar_size_method"), "Hidden Layer Neurons (size) - Method", 
+                column(6,
+                       selectInput(ns("nnetar_size_method"), "Hidden Layer Neurons (size) - Method",
                                    choices = c("Auto" = "auto", "Manual" = "manual"), selected = "auto", width = '100%'),
-                       helpText("If 'Auto': For seasonal models (P>0), size is approx. (p+P+1)/2. For non-seasonal (P=0, p>0), size is approx. (p+1)/2. If p=0 and P=0, nnetar attempts to choose p, P, and size.")
+                       helpText(textOutput(ns("help_nnetar_size")))
                 ),
                 column(6, conditionalPanel(
                   condition = paste0("input['", ns("nnetar_size_method"), "'] == 'manual'"),
@@ -146,7 +146,7 @@ mod_model_config_ui <- function(id){
               ),
               numericInput(ns("nnetar_repeats"), "Repeats (for stability)", value = 20, min = 1, step = 5, width = '100%'),
               hr(),
-              h5("Data Preprocessing:"),
+              h5(textOutput(ns("title_nnetar_preprocessing"))),
               checkboxInput(ns("nnetar_lambda_auto"), "Box-Cox Lambda (Auto select)", value = TRUE),
               conditionalPanel(
                 condition = paste0("!input['", ns("nnetar_lambda_auto"), "']"),

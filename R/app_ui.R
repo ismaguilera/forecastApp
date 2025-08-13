@@ -6,6 +6,7 @@
 #' @import shiny.i18n
 #' @import rintrojs
 #' @import bslib
+#' @import shinybusy
 #' @noRd
 
 i18n <- Translator$new(translation_json_path = app_sys("i18n",'translation.json'))
@@ -14,12 +15,14 @@ app_ui <- function(request) {
   tagList(
     # Required for rintrojs (if still using the tour)
     shinyjs::useShinyjs(), # Ensure this is present ONCE in the main UI
+    shinybusy::add_busy_spinner(spin = "fading-circle", position = "top-right", margins = c(10, 20)),
     rintrojs::introjsUI(),
     # Leave this function for adding external resources
     golem_add_external_resources(),
 
     # Top-level container: page_navbar
     bslib::page_navbar(
+      id = "navbar", # Add an ID to the navbar
       title = uiOutput("ui_page_title"), # Page title
       window_title = "Forecast App", # Browser tab title
       theme = bslib::bs_theme(version = 5, bootswatch = "cerulean"),
@@ -35,22 +38,23 @@ app_ui <- function(request) {
         # Internal layout for this panel
         bslib::layout_sidebar(
           sidebar = bslib::sidebar(
-            title = textOutput("ui_sidebar_data", inline = TRUE), # Dynamic sidebar title
-            width = 350, # Adjust width as needed
-            # Placeholder for Data Input Module UI
-            # tags$p("Placeholder for Data Upload controls (e.g., mod_data_input_ui)"),
-            # tags$p("Placeholder for Column Selection controls"),
-            mod_data_input_ui("data_input_1"), # Module UI would go here
+            div(id = "data_sidebar_div", # Wrap sidebar content in a div for easy disabling
+                title = textOutput("ui_sidebar_data", inline = TRUE), # Dynamic sidebar title
+                width = 350, # Adjust width as needed
+                # Placeholder for Data Input Module UI
+                # tags$p("Placeholder for Data Upload controls (e.g., mod_data_input_ui)"),
+                # tags$p("Placeholder for Column Selection controls"),
+                mod_data_input_ui("data_input_1"), # Module UI would go here
 
-            hr(), # Separator
-            h5(textOutput("ui_load_holidays",inline=TRUE)), # Section title
-            # fileInput("global_holidays_file", "Upload Global Holidays File (CSV: ds, holiday)",
-            fileInput("global_holidays_file", textOutput("ui_upload_global_holidays", inline = TRUE),
-                      multiple = FALSE,
-                      accept = c(".csv", "text/csv", "text/comma-separated-values,text/plain")),
-            # actionButton("load_default_holidays", "Load Default Holidays", icon = icon("calendar-check"), class="btn-sm") # Add button
-            actionButton("load_default_holidays", textOutput("ui_load_holidays_default", inline = TRUE), icon = icon("calendar-check"), class="btn-sm") # Add button
-
+                hr(), # Separator
+                h5(textOutput("ui_load_holidays",inline=TRUE)), # Section title
+                # fileInput("global_holidays_file", "Upload Global Holidays File (CSV: ds, holiday)",
+                fileInput("global_holidays_file", textOutput("ui_upload_global_holidays", inline = TRUE),
+                          multiple = FALSE,
+                          accept = c(".csv", "text/csv", "text/comma-separated-values,text/plain")),
+                # actionButton("load_default_holidays", "Load Default Holidays", icon = icon("calendar-check"), class="btn-sm") # Add button
+                actionButton("load_default_holidays", textOutput("ui_load_holidays_default", inline = TRUE), icon = icon("calendar-check"), class="btn-sm") # Add button
+            ) # End of data_sidebar_div
           ),
           # Main content for Data panel
           # bslib::card(
@@ -60,13 +64,14 @@ app_ui <- function(request) {
           #   )
           # ),
           bslib::accordion(
+            id = "accordion_data", # Add id
             open = c("Preprocessing & Split","Time Series Decomposition"),
             bslib::accordion_panel(
-              title = "Preprocessing & Split", # Title for accordion panel
+              title = uiOutput("ui_accordion_preprocess_title", inline = TRUE), # "Preprocessing & Split"
               mod_preprocess_controls_ui("preprocess_controls_1")
             ),
             bslib::accordion_panel(
-              title = "Time Series Decomposition", # Title for accordion panel
+              title = uiOutput("ui_accordion_decomposition_title", inline = TRUE), # "Time Series Decomposition"
               full_screen = TRUE, # Added full_screen here
               mod_decomposition_plot_ui("decomposition_plot_1")
             )
@@ -96,26 +101,28 @@ app_ui <- function(request) {
       # --- Model Panel ---
       bslib::nav_panel(
         title = tagList(shiny::icon("gears"),textOutput("ui_nav_model", inline = TRUE)),
-        # Internal layout for this panel
-        # bslib::layout_sidebar(
-        #   sidebar = bslib::sidebar(
-        #     title = "Models"
-        #     # width = 350,
-        #     # Placeholder for Model Selection/Config Module UI
-        #     # tags$p("Placeholder for Model Configuration Tabs (e.g., mod_model_config_ui)"),
-        #     # tags$p("Placeholder for Run Forecast Button"),
-        #      # Module UI would go here
-        #   ), # End sidebar
-          # Main content for Model panel
-          # bslib::card(
+        div(id = "model_config_div", # Wrap model panel content in a div
+            # Internal layout for this panel
+            # bslib::layout_sidebar(
+            #   sidebar = bslib::sidebar(
+            #     title = "Models"
+            #     # width = 350,
+            #     # Placeholder for Model Selection/Config Module UI
+            #     # tags$p("Placeholder for Model Configuration Tabs (e.g., mod_model_config_ui)"),
+            #     # tags$p("Placeholder for Run Forecast Button"),
+            #      # Module UI would go here
+            #   ), # End sidebar
+            # Main content for Model panel
+            # bslib::card(
             # bslib::card_header("Models"),
             # bslib::card_body(
-              # Placeholder - Config details might be primarily in sidebar
-              # tags$p("Detailed model parameters appear in the sidebar.")
-              mod_model_config_ui("model_config_1")
+            # Placeholder - Config details might be primarily in sidebar
+            # tags$p("Detailed model parameters appear in the sidebar.")
+            mod_model_config_ui("model_config_1")
             # )
-          # )
-        # ) # End layout_sidebar for Model panel
+            # )
+            # ) # End layout_sidebar for Model panel
+        ) # End of model_config_div
       ), # End Model nav_panel
 
       # --- Forecast Results Panel ---
@@ -124,7 +131,7 @@ app_ui <- function(request) {
         # Internal layout for this panel
         bslib::layout_sidebar(
           sidebar = bslib::sidebar(
-            title = "Model summary",
+            title = uiOutput("ui_sidebar_model_summary_title", inline = TRUE), # "Model summary"
             width = 350,
             # Placeholder for Model Summary Module UI
             # tags$p("Placeholder for text summary of the run model (e.g., mod_model_summary_ui)"),
@@ -135,12 +142,7 @@ app_ui <- function(request) {
             bslib::card_body(
               # Add padding or alignment if needed
               div(style = "display: flex; justify-content: flex-end; align-items: center;", # Align button right & vertically center
-                  downloadButton(
-                    outputId = "downloadForecastData",
-                    label = "Download Forecasts (CSV)",
-                    icon = shiny::icon("download"),
-                    class = "btn-success" # Optional styling
-                  ),
+                  uiOutput("ui_download_forecast_button_placeholder", inline = TRUE),
                   # Spacing
                   tags$span(style="margin-left: 20px;"),
                   # Report Format Radio Buttons
@@ -154,25 +156,20 @@ app_ui <- function(request) {
                   # Spacing
                   tags$span(style="margin-left: 10px;"),
                   # New Download Report Button
-                  downloadButton(
-                    outputId = "downloadReport",
-                    label = "Download Report",
-                    icon = shiny::icon("file-alt"),
-                    class = "btn-info"
-                  )
+                  uiOutput("ui_download_report_button_placeholder", inline = TRUE)
               )
             )
           ),
           bslib::navset_card_underline(
-            title = "Visualizations",
+            title = uiOutput("ui_visualizations_title", inline = TRUE), # "Visualizations"
             # Panel with plot ----
-            bslib::nav_panel("Plot", h1="Forecast plot", mod_results_plot_ui("results_plot_1"), full_screen = TRUE),
+            bslib::nav_panel(title = uiOutput("ui_plot_nav_title", inline = TRUE), h1="Forecast plot", mod_results_plot_ui("results_plot_1"), full_screen = TRUE),
 
             # Panel with summary ----
-            bslib::nav_panel("Performance", h1="Model performance metrics", mod_results_table_ui("results_table_1"), full_screen = TRUE),
+            bslib::nav_panel(title = uiOutput("ui_performance_nav_title", inline = TRUE), h1="Model performance metrics", mod_results_table_ui("results_table_1"), full_screen = TRUE),
 
             # Panel with table ----
-            bslib::nav_panel("Extra Plots", h1="Additional plots", mod_extra_plots_ui("extra_plots_1"), full_screen = TRUE)
+            bslib::nav_panel(title = uiOutput("ui_extra_plots_nav_title", inline = TRUE), h1="Additional plots", mod_extra_plots_ui("extra_plots_1"), full_screen = TRUE)
           )
 
           # bslib::card(
@@ -225,7 +222,7 @@ app_ui <- function(request) {
         # Internal layout for this panel
         bslib::layout_sidebar(
           sidebar = bslib::sidebar(
-            title = "About the app",
+            title = uiOutput("ui_about_app_sidebar_title", inline = TRUE),
             width = 350,
             # Placeholder for Validation Configuration?
             tags$p("This application allows forecasting of vaccine doses using multiple time series models."),
@@ -261,10 +258,10 @@ app_ui <- function(request) {
                            width = "120px") # Adjust width as needed
       ),
       bslib::nav_item(
-        actionButton("save_session_button", "Save Session", icon = icon("save"), class = "btn-primary btn-sm")
+        uiOutput("ui_save_session_button_placeholder", inline = TRUE)
       ),
       bslib::nav_item(
-        actionButton("load_session_button", "Load Session", icon = icon("folder-open"), class = "btn-info btn-sm")
+        uiOutput("ui_load_session_button_placeholder", inline = TRUE)
       ),
       footer =bslib::card_footer(
         class = "fs-6",

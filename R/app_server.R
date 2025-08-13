@@ -70,7 +70,40 @@ app_server <- function(input, output, session) {
     output$ui_visualizations <- renderText({ i18n$t("Visualizations") })
     output$ui_nav_validation <- renderText({ i18n$t("Validation") })
     output$ui_nav_about <- renderText({  i18n$t("About") })
+
+    # --- Dynamic UI elements that were hardcoded ---
+    output$ui_accordion_preprocess_title <- renderUI({ i18n$t("Preprocessing & Split") })
+    output$ui_accordion_decomposition_title <- renderUI({ i18n$t("Time Series Decomposition") })
+    output$ui_sidebar_model_summary_title <- renderUI({ i18n$t("Model summary") })
+    output$ui_visualizations_title <- renderUI({ i18n$t("Visualizations") })
+    output$ui_plot_nav_title <- renderUI({ i18n$t("Plot") })
+    output$ui_performance_nav_title <- renderUI({ i18n$t("Performance") })
+    output$ui_extra_plots_nav_title <- renderUI({ i18n$t("Extra Plots") })
+    output$ui_about_app_sidebar_title <- renderUI({ i18n$t("About the app") })
     
+    # --- Buttons with translated labels ---
+    output$ui_download_forecast_button_placeholder <- renderUI({
+      downloadButton(
+        "downloadForecastData",
+        label = i18n$t("Download Forecasts (CSV)"),
+        icon = shiny::icon("download"),
+        class = "btn-success"
+      )
+    })
+    output$ui_download_report_button_placeholder <- renderUI({
+      downloadButton(
+        "downloadReport",
+        label = i18n$t("Download Report"),
+        icon = shiny::icon("file-alt"),
+        class = "btn-info"
+      )
+    })
+    output$ui_save_session_button_placeholder <- renderUI({
+      actionButton("save_session_button", i18n$t("Save Session"), icon = icon("save"), class = "btn-primary btn-sm")
+    })
+    output$ui_load_session_button_placeholder <- renderUI({
+      actionButton("load_session_button", i18n$t("Load Session"), icon = icon("folder-open"), class = "btn-info btn-sm")
+    })
   })
 
   # Note: The "Language:" label for selectInput is not translated for now as per plan.
@@ -100,18 +133,20 @@ app_server <- function(input, output, session) {
   )
 
   # --- Module Calls ---
-  data_input_reactives <- mod_data_input_server("data_input_1")
+  data_input_reactives <- mod_data_input_server("data_input_1", i18n = i18n)
   preprocess_reactives <- mod_preprocess_controls_server(
     "preprocess_controls_1",
-    data_input_reactives = data_input_reactives
+    data_input_reactives = data_input_reactives,
+    i18n = i18n
   )
 
-  model_config_reactives <- mod_model_config_server("model_config_1")
+  model_config_reactives <- mod_model_config_server("model_config_1", i18n = i18n)
 
   mod_decomposition_plot_server(
     "decomposition_plot_1",
     reactive_aggregated_df = preprocess_reactives$reactive_aggregated_df,
-    reactive_aggregation_level = preprocess_reactives$reactive_agg_level
+    reactive_aggregation_level = preprocess_reactives$reactive_agg_level,
+    i18n = i18n
   )
 
   mod_results_plot_server(
@@ -119,7 +154,8 @@ app_server <- function(input, output, session) {
     reactive_train_df = preprocess_reactives$reactive_train_df,
     reactive_test_df = preprocess_reactives$reactive_test_df,
     reactive_forecast_list = eventReactive(r$run_id, { r$forecast_list }), # Pass the list of forecast tibbles, triggered by run_id
-    reactive_global_holidays_data = r$global_holidays_data # Pass the reactiveVal directly
+    reactive_global_holidays_data = r$global_holidays_data, # Pass the reactiveVal directly
+    i18n = i18n
   ) -> plot_obj_reactive # Capture the returned reactive plot object
 
   # mod_model_summary_server(
@@ -137,13 +173,15 @@ app_server <- function(input, output, session) {
     reactive_run_summary_list = eventReactive(r$run_id, {
       req(r$run_id > 0)
       r$run_models_summary # Pass the whole list
-    }, ignoreNULL = FALSE)
+    }, ignoreNULL = FALSE),
+    i18n = i18n
     # Remove older individual reactive arguments
   ) -> summary_reactives # Assign module output to a variable
 
   mod_results_table_server(
     "results_table_1",
-    reactive_metrics_summary = reactive({ r$metrics_summary })
+    reactive_metrics_summary = reactive({ r$metrics_summary }),
+    i18n = i18n
   ) -> metrics_df_reactive # Capture the returned reactive metrics data frame
 
   # mod_extra_plots_server(
@@ -167,7 +205,8 @@ app_server <- function(input, output, session) {
        r$fitted_list
     }, ignoreNULL = FALSE),
     # Pass the selected model name from the summary module
-    reactive_selected_summary_model = summary_reactives$selected_model # Assuming the summary module returns the input value
+    reactive_selected_summary_model = summary_reactives$selected_model, # Assuming the summary module returns the input value
+    i18n = i18n
   )
 
 
@@ -256,10 +295,10 @@ app_server <- function(input, output, session) {
         dplyr::filter(!is.na(ds) & !is.na(holiday))
       req(nrow(df_holidays) > 0, "Processed holiday data is empty. Ensure correct format and non-empty data.")
       r$global_holidays_data(df_holidays)
-      shiny::showNotification("Global holidays file uploaded and processed successfully.", type = "message")
+      shiny::showNotification(i18n$t("Global holidays file uploaded and processed successfully."), type = "message")
     }, error = function(e) {
       r$global_holidays_data(NULL) # Reset on error
-      error_message <- paste("Error processing global holidays file. Please check format (CSV with 'Fecha', 'Feriados_chilenos' columns) and content. Original error:", e$message)
+      error_message <- paste(i18n$t("Error processing global holidays file. Please check format (CSV with 'Fecha', 'Feriados_chilenos' columns) and content. Original error:"), e$message)
       shiny::showNotification(error_message, type = "error", duration = 10)
     })
   })
@@ -282,10 +321,10 @@ app_server <- function(input, output, session) {
         dplyr::filter(!is.na(ds) & !is.na(holiday))
       req(nrow(df_holidays) > 0, "Processed default holiday data is empty.")
       r$global_holidays_data(df_holidays)
-      shiny::showNotification("Default global holidays loaded successfully.", type = "message")
+      shiny::showNotification(i18n$t("Default global holidays loaded successfully."), type = "message")
     }, error = function(e) {
       r$global_holidays_data(NULL) # Reset on error
-      error_message <- paste("Error loading default global holidays. Please check the file and application configuration. Original error:", e$message)
+      error_message <- paste(i18n$t("Error loading default global holidays. Please check the file and application configuration. Original error:"), e$message)
       shiny::showNotification(error_message, type = "error", duration = 10)
     })
   })
@@ -293,6 +332,18 @@ app_server <- function(input, output, session) {
   # --- Model Execution Logic ---
   observeEvent(model_config_reactives$run_forecast_button(), {
     message("Run Forecast button clicked.")
+
+    # --- Show spinner and disable inputs ---
+    shinybusy::show_spinner()
+    shinyjs::disable("data_sidebar_div")
+    shinyjs::disable("model_config_div")
+    on.exit({
+      shinyjs::enable("data_sidebar_div")
+      shinyjs::enable("model_config_div")
+      shinybusy::hide_spinner()
+      message("Inputs re-enabled and spinner hidden.")
+    })
+
     # Get required inputs reactively
     train_df <- preprocess_reactives$reactive_train_df()
     test_df <- preprocess_reactives$reactive_test_df()
@@ -1140,230 +1191,137 @@ app_server <- function(input, output, session) {
                 nnetar_repeats = model_config_reactives$nnetar_repeats(),
                 nnetar_lambda_auto = model_config_reactives$nnetar_lambda_auto(),
                 nnetar_lambda_manual = model_config_reactives$nnetar_lambda_manual()
-              )
-              model_summary_entry$config <- config_nnetar
-              
-              # Pass agg_level to train_nnetar
-              model_obj_nnetar <- train_nnetar(train_df, config_nnetar, agg_level) 
-              req(model_obj_nnetar, "NNETAR training failed (returned NULL).")
-              
-              # Store frequency used if available as attribute
-              if (!is.null(attr(model_obj_nnetar, "frequency_used"))) {
-                model_summary_entry$frequency_used <- attr(model_obj_nnetar, "frequency_used")
-              }
-              # Store model method string if available (nnetar objects print this)
-              model_summary_entry$fitted_method <- capture.output(print(model_obj_nnetar))[1]
-
-
-              forecast_output_nnetar <- forecast_nnetar(model_obj_nnetar, total_periods_needed, last_train_date, freq_str)
-              req(forecast_output_nnetar, "NNETAR forecast_nnetar function returned NULL.")
-              
-              forecast_tibble <- forecast_output_nnetar$forecast
-              req(forecast_tibble, "NNETAR forecast data frame is NULL.")
-              
-              fitted_values <- forecast_output_nnetar$fitted
-              # NNETAR fitted values can sometimes be shorter if lags are involved, or have NAs at the start.
-              # req(fitted_values, "NNETAR fitted values are NULL.") 
-              # A more robust check for fitted_values length will be done in the metrics calculation part.
-              if(is.null(fitted_values)){
-                  message("NNETAR: Fitted values are NULL. Metrics on training data will be skipped.")
-              } else if(length(fitted_values) != nrow(train_df)) {
-                  message(paste0("NNETAR: Fitted values length (", length(fitted_values), ") does not match train_df rows (", nrow(train_df), "). Check for NAs or lag effects. Metrics on training data might be affected."))
-              }
-            }
-            # --- End Model Logic ---
-
-            # Store results if successful
-            r$forecast_list[[model_name]] <- forecast_tibble
-            r$fitted_list[[model_name]] <- fitted_values
-            model_summary_entry$success <- TRUE # Mark as successful
-            temp_summary_list[[model_name]] <- model_summary_entry # Add to temp list
-            successful_models <- c(successful_models, model_name) # Add to success list
-            model_run_success <- TRUE
-            message(paste("--- Finished Model:", model_name, "Successfully ---"))
-
-          }, error = function(e){ # Catch error for INDIVIDUAL model
-              user_friendly_message <- paste0(
-                "Error during ", model_name, " model processing. ",
-                "Please check this model's configuration and input data suitability. ",
-                "Specific error: ", conditionMessage(e)
-              )
-              warning(paste("Error running model", model_name, ":", conditionMessage(e))) # Keep for server logs
-              shiny::showNotification(user_friendly_message, type = "warning", duration = 10)
-
-              # Reset results for THIS model specifically if needed, though current logic
-              # of not assigning to r$forecast_list etc. for this model is correct.
-              # model_success <<- FALSE # This assignment might not be needed if not used elsewhere before loop ends
-              model_summary_entry$success <- FALSE
-              model_summary_entry$error <- conditionMessage(e)
-              temp_summary_list[[model_name]] <- model_summary_entry # Store error info
-
-              # Print error object to console for detailed debugging
-              print(paste("ERROR during forecast execution for model:", model_name, "at", Sys.time()))
-              print("--- Full Error Object (Individual Model) ---")
-              print(e)
-              print("--- End Error Object (Individual Model) ---")
-
-              if (model_name == "GAM") {
-                message("--- DETAILED GAM ERROR in app_server ---")
-                print(e) # Print the full error object 'e'
-                message(paste("GAM error conditionMessage:", conditionMessage(e)))
-                message(paste("GAM error conditionCall:", conditionCall(e)))
-                message("--- END DETAILED GAM ERROR ---")
-              }
-
-          }) # End inner tryCatch
-
-          # Increment progress bar after each model attempt
-          shiny::incProgress(amount = progress_inc)
-          if(model_run_success) {
-            shiny::showNotification(paste(model_name, "forecast complete."), type = "message", duration = 5)
-          } else {
-            # Error notification already shown by tryCatch
-          }
-
-        } # --- End For Loop ---
-      req(length(successful_models) > 0, "All selected models failed to produce forecasts.")
-      message(paste("Models run successfully:", paste(successful_models, collapse=", ")))
-      # --- Metrics Calculation (NEW - Loop through successful models) ---
-      message("Calculating metrics for successful models...")
-      all_metrics_list <- list() # Initialize list to store metrics tables
-      # Get actuals once
-      train_actual <- train_df$y
-      test_actual <- if (nrow(test_df %||% data.frame()) > 0) test_df$y else NULL
-      n_test_periods <- length(test_actual %||% numeric(0))
-
-      for (model_name in successful_models) {
-        message(paste("Calculating metrics for:", model_name))
-        fitted_values <- r$fitted_list[[model_name]]
-
-        # --- DEBUG Metrics Check (ADD) ---
-        # --- DEBUG Metrics Check (Keep basic info) ---
-        message(paste0("DEBUG Metrics: Checking model: ", model_name))
-        message(paste0("DEBUG Metrics: Length of fitted_values: ", length(fitted_values)))
-        message(paste0("DEBUG Metrics: Length of train_actual: ", length(train_actual)))
-        message(paste0("DEBUG Metrics: Any NAs in fitted_values? ", anyNA(fitted_values)))
-        message(paste0("DEBUG Metrics: Class of fitted_values: ", class(fitted_values)))
-        
-        # --- ADD Specific Logging for ARIMA/ETS Fitted Values ---
-        if (model_name %in% c("ARIMA", "ETS")) {
-          message(paste0("  Detailed check for ", model_name, " fitted values:"))
-          message(paste0("    str(): ", utils::capture.output(utils::str(fitted_values))))
-          message(paste0("    summary(): ", paste(utils::capture.output(summary(fitted_values)), collapse=" ")))
-        }
-        # --- END Specific Logging ---
-        
-        forecast_tibble <- r$forecast_list[[model_name]]
-        model_metrics <- list() # Store train/test for THIS model
-
-        # Calculate Train Metrics
-        if (!is.null(fitted_values) && length(fitted_values) == length(train_actual) && !anyNA(fitted_values)) {
-          train_metrics_tbl <- calculate_metrics(train_actual, fitted_values)
-          if (!is.null(train_metrics_tbl)) {
-            model_metrics$Train <- train_metrics_tbl %>% mutate(DataSet = "Train", Model = model_name)
-          } else { message(paste(" WARN: Training metrics calculation failed for", model_name))}
-        } else {
-          message(paste(" INFO: Training metrics skipped for", model_name, "(NULL, length mismatch, or NAs)"))
+            )
+            model_summary_entry$config <- config_nnetar
+            model_obj_nnetar <- train_nnetar(train_df, config_nnetar, agg_level)
+            req(model_obj_nnetar)
+            forecast_output_nnetar <- forecast_nnetar(model_obj_nnetar, total_periods_needed, last_train_date, freq_str)
+            forecast_tibble <- forecast_output_nnetar$forecast
+            fitted_values <- forecast_output_nnetar$fitted
+            req(forecast_output_nnetar, forecast_tibble)
         }
 
-        # Calculate Test Metrics
-        if (n_test_periods > 0 && !is.null(forecast_tibble)) {
-          # Align forecast with test actuals based on date 'ds'
-          test_pred_df <- forecast_tibble %>% dplyr::filter(ds %in% test_df$ds)
-          if (nrow(test_pred_df) == n_test_periods) {
-            test_pred_ordered_df <- test_pred_df[match(test_df$ds, test_pred_df$ds), ]
-            test_pred <- test_pred_ordered_df$yhat
-            if(all(!is.na(test_pred))){
-              test_metrics_tbl <- calculate_metrics(test_actual, test_pred)
-              if(!is.null(test_metrics_tbl)){
-                model_metrics$Test <- test_metrics_tbl %>% mutate(DataSet = "Test", Model = model_name)
-              } else { message(paste(" WARN: Test metrics calculation failed for", model_name)) }
-            } else { message(paste(" INFO: Test metrics skipped for", model_name, "(NAs in predictions)")) }
-          } else {
-            message(" WARN: Could not align test predictions for", model_name, "(check forecast dates/length). Skipping.")
-          }
-        } # End if test data exists
+        model_summary_entry$success <- TRUE
 
-        # Add this model's metrics (if any) to the overall list
-        if(length(model_metrics) > 0) {
-          all_metrics_list <- c(all_metrics_list, model_metrics)
-        }
-      } # End loop through successful models
-
-      # Combine metrics from all models
-      if (length(all_metrics_list) > 0) {
-        r$metrics_summary <- dplyr::bind_rows(all_metrics_list) %>%
-          dplyr::select(Model, DataSet, .metric, .estimate) # Ensure order
-        message("Metrics summary table created.")
-      } else {
-        r$metrics_summary <- NULL # Ensure it's NULL if no metrics calculated
-        message("No metrics were calculated for any successful model.")
-      }
-      # --- End Metrics Calculation --
-
-      # --- Store Combined Model Summaries ---
-      r$run_models_summary <- temp_summary_list # Update main reactive value
-
-      # --- ADD DEBUG: Print final summary structure ---
-      # --- DEBUG Plotting Check (ADD) ---
-      message("DEBUG Plotting: Checking reactive values before incrementing r$run_id")
-      message("DEBUG Plotting: Names in r$forecast_list:")
-      print(names(r$forecast_list))
-      # message("DEBUG Plotting: Structure of r$forecast_list[["ARIMA"]]:")
-      # print(str(r$forecast_list[["ARIMA"]]))
-      # message("DEBUG Plotting: Structure of r$forecast_list[["ETS"]]:")
-      # print(str(r$forecast_list[["ETS"]]))
-      # message("DEBUG Plotting: Structure of r$fitted_list[["ARIMA"]]:")
-      # print(str(r$fitted_list[["ARIMA"]]))
-      # message("DEBUG Plotting: Structure of r$fitted_list[["ETS"]]:")
-      message("--- Final r$run_models_summary structure ---")
-      print(str(r$run_models_summary))
-      message("--- End final summary structure ---")
-      # --- END DEBUG ---
-
-
-
-
-
-        # --- Update Trigger for Plot ---
-        # Increment run_id only AFTER loop finishes to trigger plot update once
-      if(length(r$forecast_list) > 0) {
-        message(paste("DEBUG: Models in r$forecast_list before plot update:", paste(names(r$forecast_list), collapse=", "))) # Log names before update
-        r$run_id <- r$run_id + 1
-        message("Finished all selected models.")
-      }
-        # --- End Update Trigger ---
-
-
-        # --- Metrics Calculation (Phase 3 - Requires Loop & List Storage) ---
-        # message("Calculating all metrics...")
-        # combined_metrics_table <- ... logic to loop through fitted_list/forecast_list ...
-        # r$metrics_summary <- combined_metrics_table
-        # --- End Metrics ---
-      }, error = function(e) { # Outer catch handler for the entire forecast process
-        # This catches errors outside individual model loops (e.g., initial data prep, metrics combination if not caught)
-        detailed_error_msg <- conditionMessage(e)
-        user_facing_error_msg <- paste(
-          "An unexpected error occurred during the overall forecast process. ",
-          "Please review your data and general settings. ",
-          "Details: ", detailed_error_msg
+        # Return a list with all necessary results
+        list(
+          model_name = model_name,
+          success = TRUE,
+          forecast_tibble = forecast_tibble,
+          fitted_values = fitted_values,
+          summary_entry = model_summary_entry
         )
-        message(paste("ERROR caught in outer tryCatch for forecast process:", detailed_error_msg)) # Server log
-        print("--- Outer tryCatch Error Object (Forecast Process) ---")
-        print(e)
-        print("--- End Outer tryCatch Error Object ---")
 
-        # Reset all potentially affected reactive values to a clean state
-        r$forecast_list <- list()
-        r$fitted_list <- list()
-        r$metrics_summary <- NULL
-        r$run_models_summary <- list() # Contains error info if models ran
-        # r$run_id <- r$run_id + 1 # Increment to ensure UI updates, even if it's to show no results or errors
-        
-        shiny::showNotification(user_facing_error_msg, type = "error", duration = 15)
-      }) # End outer tryCatch
+      }, error = function(e) {
+        warning(paste("Error running model", model_name, "in parallel:", conditionMessage(e)))
+        model_summary_entry$success <- FALSE
+        model_summary_entry$error <- conditionMessage(e)
 
-    }) # End withProgress (outer one)
+        # Return a list indicating failure
+        list(
+          model_name = model_name,
+          success = FALSE,
+          error_message = conditionMessage(e),
+          summary_entry = model_summary_entry
+        )
+      })
+    }
+
+    # Use furrr::future_map to run models in parallel
+    # The .options sets a seed for reproducibility in parallel processes
+    all_results <- furrr::future_map(
+      selected_models_now,
+      ~run_single_model(.x),
+      .progress = TRUE,
+      .options = furrr_options(seed = TRUE)
+    )
+
+    # --- Process Results from Parallel Execution ---
+    temp_forecast_list <- list()
+    temp_fitted_list <- list()
+    temp_summary_list <- list()
+
+    for (res in all_results) {
+      if (is.null(res)) {
+          shiny::showNotification("A model run returned NULL. Check logs.", type = "warning", duration = 10)
+          next
+      }
+
+      model_name <- res$model_name
+      temp_summary_list[[model_name]] <- res$summary_entry
+
+      if (res$success) {
+        temp_forecast_list[[model_name]] <- res$forecast_tibble
+        temp_fitted_list[[model_name]] <- res$fitted_values
+          shiny::showNotification(i18n$t("{model_name} forecast complete.", list(model_name = model_name)), type = "message", duration = 5)
+      } else {
+        user_friendly_message <- paste0(
+            i18n$t("Error during {model_name} model processing. Please check this model's configuration and input data suitability. Specific error:", list(model_name = model_name)),
+            " ",
+            res$error_message
+        )
+        shiny::showNotification(user_friendly_message, type = "warning", duration = 15)
+      }
+    }
+
+    # --- Update Reactive Values with Processed Results ---
+    r$forecast_list <- temp_forecast_list
+    r$fitted_list <- temp_fitted_list
+    r$run_models_summary <- temp_summary_list
+
+    successful_models <- names(r$forecast_list)
+    req(length(successful_models) > 0, "All selected models failed to produce forecasts.")
+
+    # --- Metrics Calculation ---
+    message("Calculating metrics for successful models...")
+    all_metrics_list <- list()
+    train_actual <- train_df$y
+    test_actual <- if (nrow(test_df) > 0) test_df$y else NULL
+
+    for (model_name in successful_models) {
+      fitted_values <- r$fitted_list[[model_name]]
+      forecast_tibble <- r$forecast_list[[model_name]]
+      model_metrics <- list()
+
+      # Train Metrics
+      if (!is.null(fitted_values) && length(fitted_values) == length(train_actual) && !anyNA(fitted_values)) {
+        train_metrics_tbl <- calculate_metrics(train_actual, fitted_values)
+        if (!is.null(train_metrics_tbl)) {
+          model_metrics$Train <- train_metrics_tbl %>% mutate(DataSet = "Train", Model = model_name)
+        }
+      }
+
+      # Test Metrics
+      if (!is.null(test_actual) && !is.null(forecast_tibble)) {
+        test_pred_df <- forecast_tibble %>% dplyr::filter(ds %in% test_df$ds)
+        if (nrow(test_pred_df) == nrow(test_df)) {
+          test_pred <- test_pred_df[match(test_df$ds, test_pred_df$ds), ]$yhat
+          if(all(!is.na(test_pred))){
+            test_metrics_tbl <- calculate_metrics(test_actual, test_pred)
+            if(!is.null(test_metrics_tbl)){
+              model_metrics$Test <- test_metrics_tbl %>% mutate(DataSet = "Test", Model = model_name)
+            }
+          }
+        }
+      }
+
+      if(length(model_metrics) > 0) {
+        all_metrics_list <- c(all_metrics_list, model_metrics)
+      }
+    }
+
+    if (length(all_metrics_list) > 0) {
+      r$metrics_summary <- dplyr::bind_rows(all_metrics_list) %>%
+        dplyr::select(Model, DataSet, .metric, .estimate)
+      message("Metrics summary table created.")
+    }
+
+    # --- Trigger UI Update ---
+    if(length(r$forecast_list) > 0) {
+      r$run_id <- r$run_id + 1
+      message("Finished all selected models.")
+    }
+  })
 
 
     # --- Reset File Inputs (as before) ---
@@ -1563,15 +1521,15 @@ app_server <- function(input, output, session) {
         global_holidays_file_name = global_holidays_file_name_to_save # Save original filename
       )
       
-      notification_id <- shiny::showNotification("Saving session... Please wait.", duration = NULL, type = "message")
+      notification_id <- shiny::showNotification(i18n$t("Saving session... Please wait."), duration = NULL, type = "message")
       on.exit(shiny::removeNotification(notification_id), add = TRUE)
 
       tryCatch({
         saveRDS(session_state_to_save, file = file)
         shiny::removeModal()
-        shiny::showNotification(paste("Session saved to", basename(file)), type = "message", duration = 5)
+        shiny::showNotification(i18n$t("Session saved to {filename}", list(filename = basename(file))), type = "message", duration = 5)
       }, error = function(e_save) {
-        shiny::showNotification(paste("Error saving session:", e_save$message), type = "error", duration = 10)
+        shiny::showNotification(paste(i18n$t("Error saving session:"), e_save$message), type = "error", duration = 10)
       })
     },
     contentType = "application/octet-stream"
@@ -1596,7 +1554,7 @@ app_server <- function(input, output, session) {
   observeEvent(input$confirm_load_session_button, {
     req(input$load_session_file_input_modal)
     
-    show_loading_notification <- shiny::showNotification("Loading session... Please wait.", duration = NULL, type = "message", id = "loading_session_notif")
+    show_loading_notification <- shiny::showNotification(i18n$t("Loading session... Please wait."), duration = NULL, type = "message", id = "loading_session_notif")
 
     tryCatch({
       loaded_state <- readRDS(input$load_session_file_input_modal$datapath)
@@ -1732,12 +1690,9 @@ app_server <- function(input, output, session) {
       data_file_msg <- if (!is.null(r$loaded_session_data_file_name)) paste0("main data file ('", r$loaded_session_data_file_name, "')") else "main data file"
       holidays_file_msg <- if (!is.null(r$loaded_session_holiday_file_name)) paste0("global holidays file ('", r$loaded_session_holiday_file_name, "')") else "global holidays file"
       
-      full_notification_msg <- paste0(
-        "Session loaded successfully! Please re-upload your ",
-        data_file_msg, 
-        " and ",
-        holidays_file_msg,
-        " if they were part of the saved session."
+      full_notification_msg <- i18n$t(
+        "Session loaded successfully! Please re-upload your {data_file_msg} and {holidays_file_msg} if they were part of the saved session.",
+        list(data_file_msg = data_file_msg, holidays_file_msg = holidays_file_msg)
       )
       shiny::showNotification(full_notification_msg, type = "message", duration = 15) # Increased duration
       
@@ -1753,7 +1708,7 @@ app_server <- function(input, output, session) {
     }, error = function(e) {
       shiny::removeNotification(id = "loading_session_notif")
       removeModal() # Also remove modal on error
-      shiny::showNotification(paste("Error loading session:", e$message), type = "error", duration = 10)
+      shiny::showNotification(paste(i18n$t("Error loading session:"), e$message), type = "error", duration = 10)
       # Optionally, reset parts of the state if loading fails catastrophically
       # For example, reset r$run_id if it was partially loaded and might cause issues
       # r$run_id <- 0 
@@ -1769,7 +1724,8 @@ app_server <- function(input, output, session) {
     reactive_run_models_summary = reactive({ r$run_models_summary }),
     reactive_train_df = preprocess_reactives$reactive_train_df, 
     reactive_agg_level = preprocess_reactives$reactive_agg_level, 
-    reactive_global_holidays_data = r$global_holidays_data 
+    reactive_global_holidays_data = r$global_holidays_data,
+    i18n = i18n
   )
   # --- End Validation Module Server Call ---
 
@@ -1930,7 +1886,7 @@ app_server <- function(input, output, session) {
         tryCatch({
           if (input$reportFormat == "pdf") {
             if (!tinytex::is_tinytex()) {
-              shiny::showNotification("TinyTeX is not installed. PDF reports require a LaTeX distribution. Consider installing TinyTeX with tinytex::install_tinytex().", type = "warning", duration = 15)
+              shiny::showNotification(i18n$t("TinyTeX is not installed. PDF reports require a LaTeX distribution. Consider installing TinyTeX with tinytex::install_tinytex()."), type = "warning", duration = 15)
             }
           }
           rmarkdown::render(
@@ -1947,10 +1903,10 @@ app_server <- function(input, output, session) {
             stop(paste("Rendered report file not found at temporary path:", temp_output_path, "Cannot proceed with download."))
           }
           file.copy(temp_output_path, file, overwrite = TRUE)
-          shiny::showNotification("Report generated successfully!", type = "message", duration = 5)
+          shiny::showNotification(i18n$t("Report generated successfully!"), type = "message", duration = 5)
           
         }, error = function(e_render) {
-          error_msg_render <- paste("Error during rmarkdown::render:", conditionMessage(e_render))
+          error_msg_render <- paste(i18n$t("Error during rmarkdown::render:"), conditionMessage(e_render))
           # Log full error to console for debugging
           print(error_msg_render)
           print(e_render) # Print the full error object

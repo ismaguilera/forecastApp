@@ -8,33 +8,33 @@
 mod_extra_plots_ui <- function(id){
   ns <- NS(id)
   tagList(
-    h3("Additional Plots"),
+    h3(textOutput(ns("title_additional_plots"), inline = TRUE)),
     # Remove selector from here
     # uiOutput(ns("diagnosticModelSelectorUI")),
     # hr(style="margin-top: 5px; margin-bottom: 10px;"),
     bslib::accordion(
       # Accordion item for Summary Plots with Tabs inside
       bslib::accordion_panel(
-        title = "Summary Plots",
+        title = textOutput(ns("title_summary_plots"), inline = TRUE),
         icon = shiny::icon("chart-line"),
         tabsetPanel(
-          tabPanel("Cumulative Forecast", plotly::plotlyOutput(ns("cumulativePlot"))),
-          tabPanel("Forecast by Year", plotly::plotlyOutput(ns("yearlyPlot")))
+          tabPanel(textOutput(ns("tab_cumulative_forecast"), inline = TRUE), plotly::plotlyOutput(ns("cumulativePlot"))),
+          tabPanel(textOutput(ns("tab_forecast_by_year"), inline = TRUE), plotly::plotlyOutput(ns("yearlyPlot")))
         )
       ),
       # Accordion item for Diagnostic Plots with Selector and Tabs inside
       bslib::accordion_panel(
-        title = "Diagnostic Plots",
+        title = textOutput(ns("title_diagnostic_plots"), inline = TRUE),
         icon = shiny::icon("stethoscope"),
         # Move selector inside this panel
         uiOutput(ns("diagnosticModelSelectorUI")),
         hr(style="margin-top: 5px; margin-bottom: 10px;"),
         tabsetPanel(
-          tabPanel("Residuals vs Fitted", plotly::plotlyOutput(ns("residualsVsFittedPlot"))),
-          tabPanel("Residual ACF", plotly::plotlyOutput(ns("residualAcfPlot"))),
-          tabPanel("Residual PACF", plotly::plotlyOutput(ns("residualPacfPlot"))),
-          tabPanel("Residuals vs Time", plotly::plotlyOutput(ns("residualsOverTimePlot"))),
-          tabPanel("Residuals Distribution", plotly::plotlyOutput(ns("residualsHistogramPlot")))
+          tabPanel(textOutput(ns("tab_resid_vs_fitted"), inline = TRUE), plotly::plotlyOutput(ns("residualsVsFittedPlot"))),
+          tabPanel(textOutput(ns("tab_resid_acf"), inline = TRUE), plotly::plotlyOutput(ns("residualAcfPlot"))),
+          tabPanel(textOutput(ns("tab_resid_pacf"), inline = TRUE), plotly::plotlyOutput(ns("residualPacfPlot"))),
+          tabPanel(textOutput(ns("tab_resid_vs_time"), inline = TRUE), plotly::plotlyOutput(ns("residualsOverTimePlot"))),
+          tabPanel(textOutput(ns("tab_resid_dist"), inline = TRUE), plotly::plotlyOutput(ns("residualsHistogramPlot")))
         )
       )
     )
@@ -48,23 +48,38 @@ mod_extra_plots_ui <- function(id){
 #' @param reactive_test_df Reactive test data (`ds`, `y`).
 #' @param reactive_forecast_list A reactive returning a named list of forecast dataframes.
 #' @param reactive_fitted_list A reactive returning a named list of fitted value vectors.
+#' @param i18n The shiny.i18n translator object.
 #' @noRd
 #' @import shiny plotly dplyr lubridate tidyr purrr RColorBrewer ggplot2 forecast
 #' @importFrom rlang %||%
 #' @importFrom stats residuals
-mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reactive_forecast_list, reactive_fitted_list, reactive_selected_summary_model){ # Added reactive_selected_summary_model
+mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reactive_forecast_list, reactive_fitted_list, reactive_selected_summary_model, i18n){ # Added reactive_selected_summary_model
   moduleServer( id, function(input, output, session){
     ns <- session$ns
 
+    # --- Render translated static text ---
+    output$title_additional_plots <- renderText({ i18n$t("Additional Plots") })
+    output$title_summary_plots <- renderText({ i18n$t("Summary Plots") })
+    output$tab_cumulative_forecast <- renderText({ i18n$t("Cumulative Forecast") })
+    output$tab_forecast_by_year <- renderText({ i18n$t("Forecast by Year") })
+    output$title_diagnostic_plots <- renderText({ i18n$t("Diagnostic Plots") })
+    output$tab_resid_vs_fitted <- renderText({ i18n$t("Residuals vs Fitted") })
+    output$tab_resid_acf <- renderText({ i18n$t("Residual ACF") })
+    output$tab_resid_pacf <- renderText({ i18n$t("Residual PACF") })
+    output$tab_resid_vs_time <- renderText({ i18n$t("Residuals vs Time") })
+    output$tab_resid_dist <- renderText({ i18n$t("Residuals Distribution") })
+
     # --- Model Selector for Diagnostic Plots ---
     output$diagnosticModelSelectorUI <- renderUI({
+      req(i18n)
+      i18n$get_key_translation()
       fitted_list <- reactive_fitted_list()
       req(fitted_list)
       model_choices <- names(fitted_list)
-      validate(need(length(model_choices) > 0, "No fitted values available for diagnostic plots."))
+      validate(need(length(model_choices) > 0, i18n$t("No fitted values available for diagnostic plots.")))
 
       selectInput(ns("selected_diagnostic_model"),
-                  label = "Select Model for Diagnostic Plots:",
+                  label = i18n$t("Select Model for Diagnostic Plots:"),
                   choices = model_choices,
                   selected = model_choices[1])
     })
@@ -113,6 +128,8 @@ mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reac
 
     # --- Residuals vs Fitted Plot ---
     output$residualsVsFittedPlot <- plotly::renderPlotly({
+      req(i18n)
+      i18n$get_key_translation()
       res_data <- reactive_residuals_data()
       req(res_data)
       selected_model <- input$selected_diagnostic_model # Get selected model name for title
@@ -120,9 +137,9 @@ mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reac
       p <- ggplot(res_data, aes(x = Fitted, y = Residuals)) +
         geom_point(alpha = 0.6) +
         geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
-        labs(title = paste("Residuals vs Fitted Values -", selected_model),
-             x = "Fitted Values",
-             y = "Residuals") +
+        labs(title = i18n$t("Residuals vs Fitted Values - {selected_model}", list(selected_model = selected_model)),
+             x = i18n$t("Fitted Values"),
+             y = i18n$t("Residuals")) +
         theme_minimal()
 
       plotly::ggplotly(p)
@@ -130,6 +147,8 @@ mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reac
 
     # --- Residual ACF Plot ---
     output$residualAcfPlot <- plotly::renderPlotly({
+      req(i18n)
+      i18n$get_key_translation()
       res_data <- reactive_residuals_data()
       req(res_data)
       selected_model <- input$selected_diagnostic_model
@@ -137,7 +156,7 @@ mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reac
       # Use forecast::ggAcf for easy plotting
       # Requires residuals as a numeric vector or ts object
       p_acf <- forecast::ggAcf(res_data$Residuals, lag.max = 40) + # Adjust lag.max if needed
-        labs(title = paste("ACF of Residuals -", selected_model)) +
+        labs(title = i18n$t("ACF of Residuals - {selected_model}", list(selected_model = selected_model))) +
         theme_minimal()
 
       plotly::ggplotly(p_acf)
@@ -145,12 +164,14 @@ mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reac
 
     # --- Residual PACF Plot ---
     output$residualPacfPlot <- plotly::renderPlotly({
+      req(i18n)
+      i18n$get_key_translation()
       res_data <- reactive_residuals_data()
       req(res_data)
       selected_model <- input$selected_diagnostic_model
 
       p_pacf <- forecast::ggPacf(res_data$Residuals, lag.max = 40) +
-        labs(title = paste("PACF of Residuals -", selected_model)) +
+        labs(title = i18n$t("PACF of Residuals - {selected_model}", list(selected_model = selected_model))) +
         theme_minimal()
 
       plotly::ggplotly(p_pacf)
@@ -162,6 +183,8 @@ mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reac
 
     # --- Residuals Over Time Plot ---
     output$residualsOverTimePlot <- plotly::renderPlotly({
+      req(i18n)
+      i18n$get_key_translation()
       res_data <- reactive_residuals_data()
       req(res_data, "ds" %in% names(res_data))
       selected_model <- input$selected_diagnostic_model 
@@ -170,9 +193,9 @@ mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reac
         geom_line(alpha = 0.7, color = "blue") +
         geom_point(alpha = 0.5, color = "blue") + # Keep points for visibility of individual residuals
         geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
-        labs(title = paste("Residuals Over Time -", selected_model),
-             x = "Date",
-             y = "Residuals") +
+        labs(title = i18n$t("Residuals Over Time - {selected_model}", list(selected_model = selected_model)),
+             x = i18n$t("Date"),
+             y = i18n$t("Residuals")) +
         theme_minimal()
       
       plotly::ggplotly(p)
@@ -180,6 +203,8 @@ mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reac
 
     # --- Residuals Histogram Plot ---
     output$residualsHistogramPlot <- plotly::renderPlotly({
+      req(i18n)
+      i18n$get_key_translation()
       res_data <- reactive_residuals_data()
       req(res_data)
       selected_model <- input$selected_diagnostic_model
@@ -195,9 +220,9 @@ mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reac
         geom_histogram(aes(y = after_stat(density)), bins = 30, fill = "skyblue", color = "black", alpha = 0.7) +
         # Use after_stat(density) for ggplot2 v3.4.0+ instead of ..density..
         stat_function(fun = dnorm, args = list(mean = mean_res, sd = sd_res), color = "red", size = 1) +
-        labs(title = paste("Histogram of Residuals -", selected_model),
-             x = "Residuals",
-             y = "Density") +
+        labs(title = i18n$t("Histogram of Residuals - {selected_model}", list(selected_model = selected_model)),
+             x = i18n$t("Residuals"),
+             y = i18n$t("Density")) +
         theme_minimal()
       
       plotly::ggplotly(p)
@@ -312,6 +337,8 @@ mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reac
 
     # --- Cumulative Plot (Overlaying ALL models) ---
     output$cumulativePlot <- plotly::renderPlotly({
+      req(i18n)
+      i18n$get_key_translation()
       train_df <- reactive_train_df()
       test_df <- reactive_test_df() %||% tibble::tibble(ds=as.Date(character()), y=numeric()) # Default empty tibble
       forecast_list <- reactive_forecast_list()
@@ -411,12 +438,12 @@ mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reac
                   # legendgroup = ~Model, # Group legend items
                   name = ~Model # Name traces by Model
         ) %>%
-        layout(title = "Cumulative Sum (Actuals + Forecasts)",
-               yaxis = list(title = "Cumulative Value"),
-               xaxis = list(title = "Date"),
+        layout(title = i18n$t("Cumulative Sum (Actuals + Forecasts)"),
+               yaxis = list(title = i18n$t("Cumulative Value")),
+               xaxis = list(title = i18n$t("Date")),
                hovermode = "x unified",
                legend = list(tracegroupgap = 10, # Add gap between model groups in legend
-                             title=list(text='<b> Models </b>'),
+                             title=list(text=paste0('<b> ', i18n$t("Model"), ' </b>')),
                              # orientation = "h",
                              xanchor = "center", x = 0.05, y = 0.95)
         )
@@ -424,6 +451,8 @@ mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reac
 
     # --- Yearly Plot (Comparing ALL models) ---
     output$yearlyPlot <- plotly::renderPlotly({
+      req(i18n)
+      i18n$get_key_translation()
       train_df <- reactive_train_df()
       test_df <- reactive_test_df() %||% tibble::tibble(ds=as.Date(character()), y=numeric()) # Ensure test_df is not NULL
       forecast_list <- reactive_forecast_list()
@@ -513,11 +542,11 @@ mod_extra_plots_server <- function(id, reactive_train_df, reactive_test_df, reac
       plot_ly(plot_data_current_year, x = ~Model, y = ~Value, color = ~Model,
               colors = model_color_map, # Apply color map
               type = 'bar') %>%
-        layout(title = paste("Sum for Current Year (", current_year, ")", sep = ""),
-               yaxis = list(title = "Sum of Values"),
-               xaxis = list(title = "Model", type = 'category'), # X-axis is now Model
+        layout(title = i18n$t("Sum for Current Year ({current_year})", list(current_year = current_year)),
+               yaxis = list(title = i18n$t("Sum of Values")),
+               xaxis = list(title = i18n$t("Model"), type = 'category'), # X-axis is now Model
                hovermode = "x unified",
-               legend = list(title=list(text='<b> Models </b>'))
+               legend = list(title=list(text=paste0('<b> ', i18n$t("Model"), ' </b>')))
         )
     }) # End yearlyPlot
 

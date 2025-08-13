@@ -44,6 +44,7 @@ mod_preprocess_controls_ui <- function(id){
 #' @param id Internal parameter for {shiny}.
 #' @param data_input_reactives A reactive list from mod_data_input. Expected:
 #'   `reactive_df`, `reactive_date_col`, `reactive_value_col`.
+#' @param i18n The shiny.i18n translator object.
 #'
 #' @return A reactive list containing: `reactive_train_df`, `reactive_test_df`, `reactive_agg_level`.
 #'
@@ -57,40 +58,59 @@ mod_preprocess_controls_ui <- function(id){
 #' @importFrom magrittr %>%
 #' @importFrom shinyjs disable enable
 #' @importFrom dplyr slice
-mod_preprocess_controls_server <- function(id, data_input_reactives){
+mod_preprocess_controls_server <- function(id, data_input_reactives, i18n){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
+
+    observe({
+      req(i18n)
+      i18n$get_key_translation()
+      updateSelectInput(session, "aggregationLevel", label = i18n$t("Aggregation Level"))
+      updateSelectInput(session, "aggregationFunc", label = i18n$t("Weekly Aggregation Function"))
+      updateSliderInput(session, "trainTestSplit", label = i18n$t("Train Set Percentage"))
+    })
 
     # --- Existing server logic (no changes needed inside the function) ---
     cleaned_data <- reactive({
       req(data_input_reactives$reactive_df())
       req(data_input_reactives$reactive_date_col())
       req(data_input_reactives$reactive_value_col())
-      raw_df <- data_input_reactives$reactive_df()
-      date_col <- data_input_reactives$reactive_date_col()
-      value_col <- data_input_reactives$reactive_value_col()
-      validate(
-        need(date_col %in% names(raw_df), paste("Date column '", date_col, "' not found.")),
-        need(value_col %in% names(raw_df), paste("Value column '", value_col, "' not found."))
-      )
-      df_processed <- tryCatch({
-        raw_df %>%
-          dplyr::select(ds = !!rlang::sym(date_col), y = !!rlang::sym(value_col)) %>%
-          dplyr::mutate(ds = lubridate::as_date(ds)) %>%
-          dplyr::mutate(y = as.numeric(y)) %>%
-          dplyr::filter(!is.na(ds), !is.na(y)) %>%
-          dplyr::arrange(ds) %>%
-          dplyr::distinct(ds, .keep_all = TRUE)
-      }, error = function(e) {
-        shiny::showNotification(paste("Error during data cleaning:", e$message), type = "error", duration = 10)
-        return(dplyr::tibble(ds = as.Date(character()), y = numeric()))
-      })
-      validate(
-        need(nrow(df_processed) > 0, "No valid data rows remaining after cleaning (check date/value formats and NAs)."),
-        need(inherits(df_processed$ds, "Date"), "Date column conversion failed."),
-        need(is.numeric(df_processed$y), "Value column conversion to numeric failed.")
-      )
-      return(df_processed)
+
+      shiny::withProgress(message = 'Cleaning data...', value = 0.3, {
+        raw_df <- data_input_reactives$reactive_df()
+        date_col <- data_input_reactives$reactive_date_col()
+        value_col <- data_input_reactives$reactive_value_col()
+
+        validate(
+          need(date_col %in% names(raw_df), i18n$t("Date column '{date_col}' not found.", list(date_col = date_col))),
+          need(value_col %in% names(raw_df), i18n$t("Value column '{value_col}' not found.", list(value_col = value_col)))
+        )
+
+        shiny::incProgress(0.4, detail = "Selecting, converting, and filtering...")
+
+        df_processed <- tryCatch({
+          raw_df %>%
+            dplyr::select(ds = !!rlang::sym(date_col), y = !!rlang::sym(value_col)) %>%
+            dplyr::mutate(ds = lubridate::as_date(ds)) %>%
+            dplyr::mutate(y = as.numeric(y)) %>%
+            dplyr::filter(!is.na(ds), !is.na(y)) %>%
+            dplyr::arrange(ds) %>%
+            dplyr::distinct(ds, .keep_all = TRUE)
+        }, error = function(e) {
+          shiny::showNotification(paste(i18n$t("Error during data cleaning:"), e$message), type = "error", duration = 10)
+          return(dplyr::tibble(ds = as.Date(character()), y = numeric()))
+        })
+
+        shiny::incProgress(0.3, detail = "Validating results...")
+
+        validate(
+          need(nrow(df_processed) > 0, i18n$t("No valid data rows remaining after cleaning (check date/value formats and NAs).")),
+          need(inherits(df_processed$ds, "Date"), i18n$t("Date column conversion failed.")),
+          need(is.numeric(df_processed$y), i18n$t("Value column conversion to numeric failed."))
+        )
+
+        return(df_processed)
+      }) # End withProgress
     })
 
     aggregated_data <- reactive({
@@ -98,7 +118,7 @@ mod_preprocess_controls_server <- function(id, data_input_reactives){
       clean_df <- cleaned_data()
       agg_level <- input$aggregationLevel
 
-      validate(need(nrow(clean_df) > 0, "Cannot aggregate empty data."))
+        validate(need(nrow(clean_df) > 0, i18n$t("Cannot aggregate empty data.")))
 
       if (agg_level == "Weekly") {
         req(input$aggregationFunc) # Require function selection if Weekly
@@ -106,7 +126,9 @@ mod_preprocess_controls_server <- function(id, data_input_reactives){
 
         # Remove the line: agg_func_sym <- rlang::sym(agg_func_selected)
 
-        validate(need(agg_func_selected %in% c("mean", "sum"), "Invalid aggregation function selected."))
+          validate(need(agg_func_selected %in% c("mean", "sum"), i18n$t("Invalid aggregation function selected.")))
+
+          shiny::incProgress(0.3, detail = paste("Applying weekly", agg_func_selected))
 
         df_agg <- tryCatch({
           grouped_df <- clean_df %>%
@@ -128,16 +150,15 @@ mod_preprocess_controls_server <- function(id, data_input_reactives){
 
           summary_df %>% dplyr::arrange(ds) # Arrange after summarising
 
-        }, error = function(e){
-          shiny::showNotification(
-            # The error message 'e$message' will now be more direct if stop() is called above
-            paste("Error during weekly aggregation:", e$message), type = "error", duration = 10
-          )
-          return(dplyr::tibble(ds = as.Date(character()), y = numeric()))
-        })
+          }, error = function(e){
+            shiny::showNotification(
+              paste(i18n$t("Error during weekly aggregation:"), e$message), type = "error", duration = 10
+            )
+            return(dplyr::tibble(ds = as.Date(character()), y = numeric()))
+          })
 
-        validate(need(nrow(df_agg) > 0, "Weekly aggregation resulted in empty data."))
-        return(df_agg)
+          validate(need(nrow(df_agg) > 0, i18n$t("Weekly aggregation resulted in empty data.")))
+          return(df_agg)
 
       } else { # Daily aggregation (no change)
         return(clean_df)
@@ -147,7 +168,7 @@ mod_preprocess_controls_server <- function(id, data_input_reactives){
     split_index <- reactive({
       req(aggregated_data())
       df <- aggregated_data()
-      validate(need(nrow(df) >= 2, "Need at least 2 data points after aggregation to perform train/test split."))
+      validate(need(nrow(df) >= 2, i18n$t("Need at least 2 data points after aggregation to perform train/test split.")))
       split_perc <- input$trainTestSplit / 100
       idx <- max(1, floor(nrow(df) * split_perc))
       if(split_perc == 1) idx <- nrow(df)
@@ -188,9 +209,9 @@ mod_preprocess_controls_server <- function(id, data_input_reactives){
         ))
       }
       p %>% layout(
-        title = "Processed Time Series (Train/Test Split)",
-        xaxis = list(title = "Date", rangeslider = list(visible=TRUE)),
-        yaxis = list(title = "Value"),
+        title = i18n$t("Processed Time Series (Train/Test Split)"),
+        xaxis = list(title = i18n$t("Date"), rangeslider = list(visible=TRUE)),
+        yaxis = list(title = i18n$t("Value")),
         legend = list(orientation = "h", xanchor = "center", x = 0.5, y = -0.1),
         hovermode = "x unified"
       )

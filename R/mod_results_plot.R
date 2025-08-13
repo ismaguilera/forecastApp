@@ -13,7 +13,7 @@
 mod_results_plot_ui <- function(id){
   ns <- NS(id)
   tagList(
-    h3("Forecast Plot"), # Heading for the plot section
+    h3(textOutput(ns("title_forecast_plot"), inline = TRUE)), # Heading for the plot section
     plotly::plotlyOutput(ns("forecastPlot"), height = "500px") # Set a reasonable height
   )
 }
@@ -28,9 +28,7 @@ mod_results_plot_ui <- function(id){
 #'   forecast dataframes, named by model (e.g., list(ARIMA = df1, Prophet = df2)).
 #' @param reactive_train_df A reactive expression returning the training dataframe (`ds`, `y`).
 #' @param reactive_test_df A reactive expression returning the test dataframe (`ds`, `y`).
-# @param reactive_forecast_df A reactive expression returning a forecast dataframe.
-#   Expected columns: `ds`, `yhat`. Optional columns for confidence intervals:
-#   `yhat_lower_95`, `yhat_upper_95` (or similar, e.g., `yhat_lower`, `yhat_upper`).
+#' @param i18n The shiny.i18n translator object.
 #'
 #' @noRd
 #'
@@ -39,12 +37,16 @@ mod_results_plot_ui <- function(id){
 #' @import dplyr
 #' @import tibble
 #' @importFrom rlang %||%
-mod_results_plot_server <- function(id, reactive_train_df, reactive_test_df, reactive_forecast_list, reactive_global_holidays_data = reactive(NULL)){
+mod_results_plot_server <- function(id, reactive_train_df, reactive_test_df, reactive_forecast_list, reactive_global_holidays_data = reactive(NULL), i18n){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
 
+    output$title_forecast_plot <- renderText({ i18n$t("Forecast Plot") })
+
     # Reactive expression to store the plot object
     reactive_plot_object <- reactive({
+      req(i18n)
+      i18n$get_key_translation()
       # Require the essential data components
       # req(reactive_train_df())
       # req(reactive_test_df())
@@ -58,7 +60,7 @@ mod_results_plot_server <- function(id, reactive_train_df, reactive_test_df, rea
 
       # Use req on train_data, allow empty test_data and forecast_list initially
       req(train_data)
-      validate(need(nrow(train_data) > 0, "..."))
+      validate(need(nrow(train_data) > 0, i18n$t("No training data available to plot.")))
 
       # req(train_data, forecast_data) # Require forecast data now too for this test
 
@@ -70,12 +72,12 @@ mod_results_plot_server <- function(id, reactive_train_df, reactive_test_df, rea
       # Base plot
       p <- plot_ly() %>%
         layout(
-          title = "Forecast vs Actuals",
-          yaxis = list(title = "Value"),
-          xaxis = list(title = "Date", rangeslider = list(visible=TRUE)),
+          title = i18n$t("Forecast vs Actuals"),
+          yaxis = list(title = i18n$t("Value")),
+          xaxis = list(title = i18n$t("Date"), rangeslider = list(visible=TRUE)),
           legend = #list(orientation = "h", xanchor = "center", x = 0.5, y = -0.1),
           list(tracegroupgap = 10, #orientation = "h",
-               title=list(text='<b> Models </b>'),
+               title=list(text=paste0('<b> ', i18n$t("Models"), ' </b>')),
                xanchor = "center"#, x = 0.1, y = 0.9
                ),
           hovermode = "x unified"
@@ -83,12 +85,12 @@ mod_results_plot_server <- function(id, reactive_train_df, reactive_test_df, rea
 
       # Add Training Data Trace
       p <- p %>% add_trace(data = train_data, x = ~ds, y = ~y,
-                           type = 'scatter', mode = 'lines', line = list(color = 'black'), name = 'Actual (Train)')
+                           type = 'scatter', mode = 'lines', line = list(color = 'black'), name = i18n$t("Actual (Train)"))
 
       # Add Test Data Trace (if it exists)
       if (nrow(test_data) > 0) {
         p <- p %>% add_trace(data = test_data, x = ~ds, y = ~y, type = 'scatter', mode = 'lines',
-                             line = list(color = 'grey', dash = 'dash'), name = 'Actual (Test)')
+                             line = list(color = 'grey', dash = 'dash'), name = i18n$t("Actual (Test)"))
       }
 
       # --- Loop Through Forecast List ---
@@ -195,7 +197,7 @@ mod_results_plot_server <- function(id, reactive_train_df, reactive_test_df, rea
             marker = list(opacity = 0.001, size = 10), # Effectively invisible but hoverable
             text = ~paste(holiday, "<br>", ds), # Hover text: holiday name and date
             hoverinfo = "text",
-            name = "Holidays", # Name for the legend
+            name = i18n$t("Holidays"), # Name for the legend
             showlegend = TRUE
           )
         }

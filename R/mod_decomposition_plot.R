@@ -18,20 +18,23 @@ mod_decomposition_plot_ui <- function(id){
 #' @param id Internal parameter for {shiny}.
 #' @param reactive_aggregated_df Reactive containing the aggregated data before train/test split (needs 'ds', 'y').
 #' @param reactive_aggregation_level Reactive returning aggregation level ('Daily', 'Weekly').
+#' @param i18n The shiny.i18n translator object.
 #' @noRd
 #' @import shiny plotly dplyr tidyr lubridate stats
-mod_decomposition_plot_server <- function(id, reactive_aggregated_df, reactive_aggregation_level){
+mod_decomposition_plot_server <- function(id, reactive_aggregated_df, reactive_aggregation_level, i18n){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
 
     output$decompPlot <- plotly::renderPlotly({
+      req(i18n)
+      i18n$get_key_translation()
 
       agg_data <- reactive_aggregated_df()
       agg_level <- reactive_aggregation_level()
 
       req(agg_data, agg_level) # Ensure inputs are available
       validate(
-        need(nrow(agg_data) > 1, "Need at least 2 data points for decomposition plot."),
+        need(nrow(agg_data) > 1, i18n$t("Need at least 2 data points for decomposition plot.")),
         need(all(c("ds", "y") %in% names(agg_data)), "Aggregated data needs 'ds' and 'y' columns.")
       )
 
@@ -41,7 +44,7 @@ mod_decomposition_plot_server <- function(id, reactive_aggregated_df, reactive_a
       # Check if enough data for STL
       validate(
         need(freq > 1, "Decomposition requires seasonal data (frequency > 1)."),
-        need(nrow(agg_data) >= 2 * freq, paste0("Need at least 2 full seasonal cycles (", 2*freq, " points) for STL decomposition."))
+        need(nrow(agg_data) >= 2 * freq, i18n$t("Need at least 2 full seasonal cycles ({n_points} points) for STL decomposition.", list(n_points = 2 * freq)))
       )
 
       message("Attempting STL decomposition for plot...")
@@ -112,7 +115,7 @@ mod_decomposition_plot_server <- function(id, reactive_aggregated_df, reactive_a
       subplot(p_data, p_seasonal, p_trend, p_remainder,
               nrows = 4, shareX = TRUE, titleY = TRUE,
               heights = c(0.4, 0.2, 0.2, 0.2)) %>% # Adjust relative heights
-        layout(title = "Time Series Decomposition (STL)",
+        layout(title = i18n$t("Time Series Decomposition (STL)"),
                showlegend = FALSE) # Hide individual legends
 
     }) # End renderPlotly

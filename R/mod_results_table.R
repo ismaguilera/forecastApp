@@ -13,7 +13,7 @@
 mod_results_table_ui <- function(id){
   ns <- NS(id)
   tagList(
-    h3("Model Performance Metrics"), # Heading for the table section
+    h3(textOutput(ns("title_metrics"), inline = TRUE)), # Heading for the table section
     DT::DTOutput(ns("metricsTable"))
   )
 }
@@ -33,6 +33,7 @@ mod_results_table_ui <- function(id){
 #'   ARIMA | Train   | mae     | ...
 #'   ARIMA | Test    | mae     | ...
 #'   ...
+#' @param i18n The shiny.i18n translator object.
 #'
 #' @noRd
 #'
@@ -40,19 +41,23 @@ mod_results_table_ui <- function(id){
 #' @import DT
 #' @import dplyr
 #' @import tidyr
-mod_results_table_server <- function(id, reactive_metrics_summary){
+mod_results_table_server <- function(id, reactive_metrics_summary, i18n){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
 
+    output$title_metrics <- renderText({ i18n$t("Model Performance Metrics") })
+
     # Reactive expression for the formatted metrics data frame
     reactive_metrics_df <- reactive({
+      req(i18n)
+      i18n$get_key_translation()
       metrics_data <- reactive_metrics_summary()
 
       # Require metrics_data to be non-NULL and have rows before proceeding
       req(metrics_data)
       validate(
         need(is.data.frame(metrics_data) && nrow(metrics_data) > 0,
-             "Metrics are not available yet. Run a forecast.")
+             i18n$t("Metrics are not available yet. Run a forecast."))
         # Can add more specific column checks if needed
       )
 
@@ -70,14 +75,14 @@ mod_results_table_server <- function(id, reactive_metrics_summary){
           dplyr::select(Model, DataSet, any_of(c("mae", "rmse", "mape"))) %>%
           # Rename for better display
           dplyr::rename(
-            MAE = mae,
-            RMSE = rmse,
-            MAPE = mape
+            !!i18n$t("MAE") := mae,
+            !!i18n$t("RMSE") := rmse,
+            !!i18n$t("MAPE") := mape
           )
       }, error = function(e){
-        shiny::showNotification("Error formatting metrics table.", type = "warning")
+        shiny::showNotification(i18n$t("Error formatting metrics table."), type = "warning")
         # Return an empty placeholder or the original data to show something
-        return(tibble::tibble(Status = "Error formatting data"))
+        return(tibble::tibble(!!i18n$t("Status") := i18n$t("Error formatting data")))
       })
       return(metrics_formatted)
     })
