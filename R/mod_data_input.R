@@ -55,6 +55,7 @@ mod_data_input_ui <- function(id){
 #'   validation, and populating column selectors.
 #'
 #' @param id Internal parameter for {shiny}.
+#' @param i18n The shiny.i18n translator object.
 #'
 #' @return A reactive list containing: `reactive_df`, `reactive_date_col`, `reactive_value_col`.
 #'
@@ -69,7 +70,7 @@ mod_data_input_ui <- function(id){
 #' @importFrom utils head
 #' @importFrom magrittr %>%
 #' @importFrom DT renderDT datatable DTOutput
-mod_data_input_server <- function(id){
+mod_data_input_server <- function(id, i18n){
   moduleServer( id, function(input, output, session){
     ns <- session$ns
 
@@ -109,11 +110,11 @@ mod_data_input_server <- function(id){
           message("Reading Excel file from upload.") # Debug message
           readxl::read_excel(trigger$datapath)
         } else {
-          stop("Unsupported file type. Please upload a .csv or .xlsx file.")
+          stop(i18n$t("Unsupported file type. Please upload a .csv or .xlsx file."))
         }
       }, error = function(e) {
         shiny::showNotification(
-          paste("Error reading uploaded file:", e$message),
+          paste(i18n$t("Error reading uploaded file:"), e$message),
           type = "error",
           duration = 10
         )
@@ -122,7 +123,7 @@ mod_data_input_server <- function(id){
       })
 
       if (!is.null(df)) {
-        shiny::showNotification("File uploaded successfully!", type = "message", duration = 5)
+        shiny::showNotification(i18n$t("File uploaded successfully!"), type = "message", duration = 5)
         message(paste("Successfully read uploaded file. Dimensions:", nrow(df), "rows,", ncol(df), "columns.")) # Debug message
         reactive_df_data(df) # Update the reactiveVal with the dataframe
       } else {
@@ -137,7 +138,7 @@ mod_data_input_server <- function(id){
 
       # Validate that a file is selected
       validate(
-        need(!is.null(selected_file_name) && selected_file_name != "", "Please select a default dataset to load.")
+        need(!is.null(selected_file_name) && selected_file_name != "", i18n$t("Please select a default dataset to load."))
       )
       message(paste("Selected default file:", selected_file_name)) # Debug message
 
@@ -145,7 +146,7 @@ mod_data_input_server <- function(id){
       default_file_path <- app_sys("extdata", selected_file_name)
 
       validate(
-        need(file.exists(default_file_path), paste("Selected default data file not found at:", default_file_path))
+        need(file.exists(default_file_path), i18n$t("Selected default data file not found at: {filepath}", list(filepath = default_file_path)))
       )
 
       df <- tryCatch({
@@ -153,7 +154,7 @@ mod_data_input_server <- function(id){
         as.data.frame(data.table::fread(default_file_path, stringsAsFactors = FALSE))
       }, error = function(e) {
         shiny::showNotification(
-          paste("Error reading selected default file:", e$message),
+          paste(i18n$t("Error reading selected default file:"), e$message),
           type = "error",
           duration = 10
         )
@@ -162,7 +163,7 @@ mod_data_input_server <- function(id){
       })
 
       if (!is.null(df)) {
-        shiny::showNotification("Selected default dataset loaded successfully!", type = "message", duration = 5)
+        shiny::showNotification(i18n$t("Selected default dataset loaded successfully!"), type = "message", duration = 5)
         message(paste("Successfully read selected default file. Dimensions:", nrow(df), "rows,", ncol(df), "columns.")) # Debug message
         reactive_df_data(df) # Update the reactiveVal with the dataframe
       } else {

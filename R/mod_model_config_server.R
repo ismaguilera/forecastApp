@@ -3,12 +3,107 @@
 #' model_config Server Function
 #' @description Server logic for model configuration module.
 #' @param id Internal parameter for {shiny}.
+#' @param i18n The shiny.i18n translator object.
 #' @noRd
 #' @import shiny
 #' @importFrom shinyjs toggleState
-mod_model_config_server <- function(id) {
+mod_model_config_server <- function(id, i18n) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+
+    # --- Render translated static text ---
+    output$title_model_config <- renderText({ i18n$t("Model Configuration") })
+    output$title_select_models <- renderText({ i18n$t("Select Models to Run:") })
+    output$title_config_params <- renderText({ i18n$t("Configure Model Parameters:") })
+    output$title_arima_params <- renderText({ i18n$t("ARIMA Parameters") })
+    output$title_ets_params <- renderText({ i18n$t("ETS Parameters") })
+    output$title_tbats_params <- renderText({ i18n$t("TBATS Parameters") })
+    output$text_tbats_auto <- renderText({ i18n$t("TBATS model is run with automatic parameter selection.") })
+    output$title_prophet_params <- renderText({ i18n$t("Prophet Parameters") })
+    output$title_xgboost_params <- renderText({ i18n$t("XGBoost Parameters") })
+    output$title_rf_params <- renderText({ i18n$t("Random Forest Parameters") })
+    output$title_gam_params <- renderText({ i18n$t("GAM Parameters") })
+    output$title_nnetar_params <- renderText({ i18n$t("NNETAR Parameters") })
+    output$text_nnetar_desc <- renderText({ i18n$t("Neural Network Autoregressive Model. Predicts based on lagged values of the time series.") })
+    output$title_nnetar_structure <- renderText({ i18n$t("Model Structure:") })
+    output$help_nnetar_lags <- renderText({ i18n$t("Set p/P to 0 to let nnetar choose automatically. If both >0, specific lags are used. Seasonal P is only effective if data frequency > 1 (e.g., daily/weekly).") })
+    output$help_nnetar_size <- renderText({ i18n$t("If 'Auto': For seasonal models (P>0), size is approx. (p+P+1)/2. For non-seasonal (P=0, p>0), size is approx. (p+1)/2. If p=0 and P=0, nnetar attempts to choose p, P, and size.") })
+    output$title_nnetar_preprocessing <- renderText({ i18n$t("Data Preprocessing:") })
+
+    # --- Observer to update input labels based on language change ---
+    observe({
+      req(i18n)
+      i18n$get_key_translation() # Dependency on language change
+
+      # Sidebar inputs
+      updateCheckboxInput(session, "use_arima", label = i18n$t("ARIMA"))
+      updateCheckboxInput(session, "use_ets", label = i18n$t("ETS"))
+      updateCheckboxInput(session, "use_tbats", label = i18n$t("TBATS"))
+      updateCheckboxInput(session, "use_prophet", label = i18n$t("Prophet"))
+      updateCheckboxInput(session, "use_xgboost", label = i18n$t("XGBoost"))
+      updateCheckboxInput(session, "use_gam", label = i18n$t("GAM"))
+      updateCheckboxInput(session, "use_rf", label = i18n$t("Random Forest"))
+      updateCheckboxInput(session, "use_nnetar", label = i18n$t("NNETAR"))
+      updateNumericInput(session, "forecastHorizon", label = i18n$t("Forecast Horizon (Periods):"))
+      updateActionButton(session, "runForecast", label = i18n$t("Run Forecast"))
+
+      # ARIMA panel
+      updateCheckboxInput(session, "arima_auto", label = i18n$t("Auto ARIMA (auto.arima)"))
+      updateNumericInput(session, "arima_p", label = i18n$t("Order p (AR):"))
+      updateNumericInput(session, "arima_d", label = i18n$t("Order d (Diff):"))
+      updateNumericInput(session, "arima_q", label = i18n$t("Order q (MA):"))
+      updateCheckboxInput(session, "arima_seasonal", label = i18n$t("Seasonal ARIMA"))
+      updateNumericInput(session, "arima_P", label = i18n$t("Seasonal P (SAR):"))
+      updateNumericInput(session, "arima_D", label = i18n$t("Seasonal D (SDiff):"))
+      updateNumericInput(session, "arima_Q", label = i18n$t("Seasonal Q (SMA):"))
+      updateNumericInput(session, "arima_period", label = i18n$t("Seasonal Period (e.g., 7 for daily/weekly, 52 for weekly/yearly):"))
+
+      # ETS panel
+      updateCheckboxInput(session, "ets_manual", label = i18n$t("Manual ETS Configuration"))
+      updateSelectInput(session, "ets_e", label = i18n$t("Error Component (E):"))
+      updateSelectInput(session, "ets_t", label = i18n$t("Trend Component (T):"))
+      updateSelectInput(session, "ets_s", label = i18n$t("Seasonal Component (S):"))
+      updateSelectInput(session, "ets_damped_str", label = i18n$t("Damped Trend:"))
+
+      # Prophet panel
+      updateCheckboxInput(session, "prophet_yearly", label = i18n$t("Yearly Seasonality"))
+      updateCheckboxInput(session, "prophet_weekly", label = i18n$t("Weekly Seasonality"))
+      updateCheckboxInput(session, "prophet_daily", label = i18n$t("Daily Seasonality (for daily data)"))
+      updateSelectInput(session, "prophet_growth", label = i18n$t("Growth Model:"))
+      updateNumericInput(session, "prophet_capacity", label = i18n$t("Capacity (Cap for Logistic Growth):"))
+      updateNumericInput(session, "prophet_changepoint_scale", label = i18n$t("Changepoint Prior Scale:"))
+      updateFileInput(session, "prophet_regressors_file", label = i18n$t("Upload External Regressors CSV (optional, cols: ds, regressor1, ...)"))
+
+      # XGBoost panel
+      updateCheckboxInput(session, "xgb_enable_tuning", label = i18n$t("Enable Hyperparameter Tuning"))
+      updateNumericInput(session, "xgb_nrounds", label = i18n$t("Number of Rounds (Trees):"))
+      updateNumericInput(session, "xgb_eta", label = i18n$t("Learning Rate (eta):"))
+      updateNumericInput(session, "xgb_max_depth", label = i18n$t("Max Tree Depth:"))
+      updateNumericInput(session, "xgb_subsample", label = i18n$t("Subsample Ratio of Training Instances:"))
+      updateNumericInput(session, "xgb_colsample", label = i18n$t("Column Sample Ratio per Tree:"))
+      updateNumericInput(session, "xgb_gamma", label = i18n$t("Min Split Loss (gamma):"))
+
+      # Random Forest panel
+      updateCheckboxInput(session, "rf_enable_tuning", label = i18n$t("Enable Hyperparameter Tuning"))
+      updateNumericInput(session, "rf_num_trees", label = i18n$t("Number of Trees:"))
+      updateNumericInput(session, "rf_mtry", label = i18n$t("Variables per Split (mtry, 0 for auto if tuning off):"))
+      updateNumericInput(session, "rf_min_node_size", label = i18n$t("Min Node Size:"))
+
+      # GAM panel
+      updateSelectInput(session, "gam_trend_type", label = i18n$t("Trend Type:"))
+      updateCheckboxInput(session, "gam_use_season_y", label = i18n$t("Include Yearly Seasonality (Day of Year)"))
+      updateCheckboxInput(session, "gam_use_season_w", label = i18n$t("Include Weekly Seasonality (Day of Week)"))
+
+      # NNETAR panel
+      updateNumericInput(session, "nnetar_p", label = i18n$t("Non-seasonal lags (p) (0 for auto if P=0, or specify e.g., 1, 2)"))
+      updateNumericInput(session, "nnetar_P", label = i18n$t("Seasonal lags (P) (0 for non-seasonal, or specify e.g., 1, 2 for seasonal)"))
+      updateSelectInput(session, "nnetar_size_method", label = i18n$t("Hidden Layer Neurons (size) - Method"))
+      updateNumericInput(session, "nnetar_size_manual", label = i18n$t("Number of Hidden Neurons"))
+      updateNumericInput(session, "nnetar_repeats", label = i18n$t("Repeats (for stability)"))
+      updateCheckboxInput(session, "nnetar_lambda_auto", label = i18n$t("Box-Cox Lambda (Auto select)"))
+      updateNumericInput(session, "nnetar_lambda_manual", label = i18n$t("Manual Lambda (0-1 for Box-Cox, leave NA/blank for no transform)"))
+
+    })
 
     # --- Observers to toggle numeric input states based on auto/manual selections ---
     # ARIMA Auto vs Manual
