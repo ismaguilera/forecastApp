@@ -5,6 +5,6 @@ account: ismaguilera
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 14476002
-bundleId: 10772314
+bundleId: 10772465
 url: https://ismaguilera.shinyapps.io/PronosticoApp/
 version: 1
