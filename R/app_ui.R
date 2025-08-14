@@ -8,7 +8,7 @@
 #' @import bslib
 #' @noRd
 
-i18n <- Translator$new(translation_json_path = app_sys("i18n",'translation.json'))
+i18n <- shiny.i18n::Translator$new(translation_json_path = app_sys("i18n",'translation.json'))
 
 app_ui <- function(request) {
   tagList(
