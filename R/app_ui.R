@@ -6,6 +6,7 @@
 #' @import shiny.i18n
 #' @import rintrojs
 #' @import bslib
+#' @importFrom golem with_golem_options
 #' @noRd
 
 # path_file_translation<-system.file("./i18n/translation.json")
@@ -305,7 +306,7 @@ app_ui <- function(request) {
 #' Includes standard golem favicon and bundle resources functionality.
 #'
 #' @import shiny
-#' @importFrom golem add_resource_path activate_js favicon bundle_resources
+#' @importFrom golem add_resource_path activate_js use_favicon bundle_resources
 #' @noRd
 golem_add_external_resources <- function() {
   # Ensure golem is listed in DESCRIPTION Imports
@@ -318,7 +319,7 @@ golem_add_external_resources <- function() {
 
   # Add other head tags like favicon and essential resources
   tags$head(
-    favicon(), # Adds favicon based on golem defaults or settings
+    use_favicon(), # Adds favicon based on golem defaults or settings
     bundle_resources( # Bundles resources from the specified path
       path = app_sys("app/www"),
       app_title = "forecastApp" # Title for the app

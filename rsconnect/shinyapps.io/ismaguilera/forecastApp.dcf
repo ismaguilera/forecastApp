@@ -4,7 +4,7 @@ username: ismaguilera
 account: ismaguilera
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
-appId: 14476002
-bundleId: 10791343
+appId: 15227000
+bundleId: 10792665
 url: https://ismaguilera.shinyapps.io/forecastApp/
 version: 1

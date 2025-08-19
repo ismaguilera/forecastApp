@@ -1,3 +1,5 @@
 .Rproj.user
 .Rhistory
 renv/library
+.vscode/mcp.json
+R/_disable_autoload.R

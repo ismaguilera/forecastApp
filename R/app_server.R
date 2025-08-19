@@ -10,6 +10,7 @@
 #' @importFrom utils head capture.output str packageVersion
 #' @importFrom purrr reduce 
 #' @importFrom rlang `%||%`
+#' @importFrom golem with_golem_options
 # Needed for forecast() call inside observeEvent
 # Add other necessary imports if functions are called directly here
 #' @noRd
