@@ -8,7 +8,17 @@
 #' @import bslib
 #' @noRd
 
-i18n <- shiny.i18n::Translator$new(translation_json_path = app_sys("i18n",'translation.json'))
+# path_file_translation<-system.file("./i18n/translation.json")
+# i18n <- shiny.i18n::Translator$new(translation_json_path = path_file_translation)
+# i18n$set_translation_language('en') # Set default language to English
+
+default_translation_file_name <- get_golem_config("translation_file")
+req(default_translation_file_name, "Default translation file name not configured.")
+path_file_translation <- app_sys("i18n", default_translation_file_name)
+req(file.exists(path_file_translation), paste("Default translation file not found at:", path_file_translation))
+     
+i18n <- shiny.i18n::Translator$new(translation_json_path = path_file_translation)
+i18n$set_translation_language('en')
 
 app_ui <- function(request) {
   tagList(

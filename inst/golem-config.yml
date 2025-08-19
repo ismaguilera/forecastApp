@@ -5,6 +5,7 @@ default:
   forecast_horizon_default: 150
   default_data_file: "datos_covid_20250522.csv"
   default_holiday_file: "feriados.csv"
+  translation_file: "translation.json"
 
 production:
   app_prod: yes

@@ -15,7 +15,13 @@
 #' @noRd
 
 # --- Internationalization Setup ---
-i18n <- shiny.i18n::Translator$new(translation_json_path = app_sys("i18n",'translation.json'))
+
+default_translation_file_name <- get_golem_config("translation_file")
+req(default_translation_file_name, "Default translation file name not configured.")
+path_file_translation <- app_sys("i18n", default_translation_file_name)
+req(file.exists(path_file_translation), paste("Default translation file not found at:", path_file_translation))
+     
+i18n <- shiny.i18n::Translator$new(translation_json_path = path_file_translation)
 i18n$set_translation_language('en')
 
 app_server <- function(input, output, session) {
@@ -1430,11 +1436,13 @@ app_server <- function(input, output, session) {
       contentType = "text/csv"
     )
 
+  
 
 
 
-  output$global_holidays_preview <- renderPrint({
-    head(r$global_holidays_data())
+    output$global_holidays_preview <- renderPrint({
+      head(r$global_holidays_data())
+    })
   })
 
   # --- Save Session Logic ---
@@ -1449,133 +1457,134 @@ app_server <- function(input, output, session) {
       ),
       easyClose = TRUE
     ))
+  
+
+    output$trigger_session_save_download <- downloadHandler(
+      filename = function() {
+        req(input$session_filename_input)
+        # Sanitize filename to prevent invalid characters
+        sanitized_name <- gsub("[^a-zA-Z0-9_\\-\\.]", "_", input$session_filename_input)
+        if (!grepl("\\.rds$", sanitized_name, ignore.case = TRUE)) {
+          sanitized_name <- paste0(sanitized_name, ".rds")
+        }
+        sanitized_name
+      },
+      content = function(file) {
+        # Gather all data to save
+        # Main reactive values 'r'
+        r_values_to_save <- reactiveValuesToList(r)
+        
+        # Data Input module state
+        di_state_values <- list(
+          selected_date_col = if (is.function(data_input_reactives$reactive_selected_date_col)) data_input_reactives$reactive_selected_date_col() else NULL,
+          selected_value_col = if (is.function(data_input_reactives$reactive_selected_value_col)) data_input_reactives$reactive_selected_value_col() else NULL,
+          selected_format = if (is.function(data_input_reactives$reactive_selected_format)) data_input_reactives$reactive_selected_format() else NULL,
+          data_input_1_fileUpload_name = if (is.function(data_input_reactives$raw_data_name)) data_input_reactives$raw_data_name() else NULL # Store original filename
+        )
+
+        # Preprocessing module state
+        pp_state_values <- list(
+          aggregation_level = if (is.function(preprocess_reactives$reactive_agg_level)) preprocess_reactives$reactive_agg_level() else NULL,
+          aggregation_function = if (is.function(preprocess_reactives$reactive_agg_func)) preprocess_reactives$reactive_agg_func() else NULL,
+          train_test_split_ratio = if (is.function(preprocess_reactives$reactive_train_test_split)) preprocess_reactives$reactive_train_test_split() else NULL,
+          imputation_method = if (is.function(preprocess_reactives$reactive_imputation_method)) preprocess_reactives$reactive_imputation_method() else NULL,
+          transformation_method = if (is.function(preprocess_reactives$reactive_transformation_method)) preprocess_reactives$reactive_transformation_method() else NULL
+        )
+        
+        # Model configurations - exhaustive list of all inputs
+        mc_state_values <- list(
+          active_tab = if (is.function(model_config_reactives$active_tab)) model_config_reactives$active_tab() else NULL,
+          forecast_horizon = if (is.function(model_config_reactives$forecast_horizon)) model_config_reactives$forecast_horizon() else NULL,
+          # ARIMA
+          use_arima = if (is.function(model_config_reactives$use_arima)) model_config_reactives$use_arima() else NULL,
+          arima_auto = if (is.function(model_config_reactives$arima_auto)) model_config_reactives$arima_auto() else NULL, 
+          arima_p = if (is.function(model_config_reactives$arima_p)) model_config_reactives$arima_p() else NULL, 
+          arima_d = if (is.function(model_config_reactives$arima_d)) model_config_reactives$arima_d() else NULL, 
+          arima_q = if (is.function(model_config_reactives$arima_q)) model_config_reactives$arima_q() else NULL,
+          arima_seasonal = if (is.function(model_config_reactives$arima_seasonal)) model_config_reactives$arima_seasonal() else NULL, 
+          arima_P = if (is.function(model_config_reactives$arima_P)) model_config_reactives$arima_P() else NULL, 
+          arima_D = if (is.function(model_config_reactives$arima_D)) model_config_reactives$arima_D() else NULL, 
+          arima_Q = if (is.function(model_config_reactives$arima_Q)) model_config_reactives$arima_Q() else NULL, 
+          arima_period = if (is.function(model_config_reactives$arima_period)) model_config_reactives$arima_period() else NULL,
+          # ETS
+          use_ets = if (is.function(model_config_reactives$use_ets)) model_config_reactives$use_ets() else NULL,
+          ets_manual = if (is.function(model_config_reactives$ets_manual)) model_config_reactives$ets_manual() else NULL, 
+          ets_e = if (is.function(model_config_reactives$ets_e)) model_config_reactives$ets_e() else NULL, 
+          ets_t = if (is.function(model_config_reactives$ets_t)) model_config_reactives$ets_t() else NULL, 
+          ets_s = if (is.function(model_config_reactives$ets_s)) model_config_reactives$ets_s() else NULL, 
+          ets_damped_str = if (is.function(model_config_reactives$ets_damped_str)) model_config_reactives$ets_damped_str() else NULL,
+          # TBATS
+          use_tbats = (if (is.function(model_config_reactives$use_tbats)) model_config_reactives$use_tbats() else NULL) %||% FALSE,
+          # Prophet
+          use_prophet = if (is.function(model_config_reactives$use_prophet)) model_config_reactives$use_prophet() else NULL,
+          prophet_growth = if (is.function(model_config_reactives$prophet_growth)) model_config_reactives$prophet_growth() else NULL, 
+          prophet_yearly = if (is.function(model_config_reactives$prophet_yearly)) model_config_reactives$prophet_yearly() else NULL, 
+          prophet_weekly = if (is.function(model_config_reactives$prophet_weekly)) model_config_reactives$prophet_weekly() else NULL, 
+          prophet_daily = if (is.function(model_config_reactives$prophet_daily)) model_config_reactives$prophet_daily() else NULL,
+          prophet_changepoint_scale = if (is.function(model_config_reactives$prophet_changepoint_scale)) model_config_reactives$prophet_changepoint_scale() else NULL, 
+          prophet_capacity = if (is.function(model_config_reactives$prophet_capacity)) model_config_reactives$prophet_capacity() else NULL,
+          # XGBoost
+          use_xgboost = if (is.function(model_config_reactives$use_xgboost)) model_config_reactives$use_xgboost() else NULL,
+          xgb_enable_tuning = if (is.function(model_config_reactives$xgb_enable_tuning)) model_config_reactives$xgb_enable_tuning() else NULL,
+          xgb_nrounds = if (is.function(model_config_reactives$xgb_nrounds)) model_config_reactives$xgb_nrounds() else NULL, 
+          xgb_eta = if (is.function(model_config_reactives$xgb_eta)) model_config_reactives$xgb_eta() else NULL, 
+          xgb_max_depth = if (is.function(model_config_reactives$xgb_max_depth)) model_config_reactives$xgb_max_depth() else NULL,
+          xgb_subsample = if (is.function(model_config_reactives$xgb_subsample)) model_config_reactives$xgb_subsample() else NULL, 
+          xgb_colsample = if (is.function(model_config_reactives$xgb_colsample)) model_config_reactives$xgb_colsample() else NULL, 
+          xgb_gamma = if (is.function(model_config_reactives$xgb_gamma)) model_config_reactives$xgb_gamma() else NULL,
+          # GAM
+          use_gam = if (is.function(model_config_reactives$use_gam)) model_config_reactives$use_gam() else NULL,
+          gam_trend_type = if (is.function(model_config_reactives$gam_trend_type)) model_config_reactives$gam_trend_type() else NULL, 
+          gam_use_season_y = if (is.function(model_config_reactives$gam_use_season_y)) model_config_reactives$gam_use_season_y() else NULL, 
+          gam_use_season_w = if (is.function(model_config_reactives$gam_use_season_w)) model_config_reactives$gam_use_season_w() else NULL,
+          # RF
+          use_rf = if (is.function(model_config_reactives$use_rf)) model_config_reactives$use_rf() else NULL,
+          rf_enable_tuning = if (is.function(model_config_reactives$rf_enable_tuning)) model_config_reactives$rf_enable_tuning() else NULL,
+          rf_num_trees = if (is.function(model_config_reactives$rf_num_trees)) model_config_reactives$rf_num_trees() else NULL, 
+          rf_mtry = if (is.function(model_config_reactives$rf_mtry)) model_config_reactives$rf_mtry() else NULL, 
+          rf_min_node_size = if (is.function(model_config_reactives$rf_min_node_size)) model_config_reactives$rf_min_node_size() else NULL,
+          # NNETAR
+          use_nnetar = if (is.function(model_config_reactives$use_nnetar)) model_config_reactives$use_nnetar() else NULL,
+          nnetar_p = if (is.function(model_config_reactives$nnetar_p)) model_config_reactives$nnetar_p() else NULL,
+          nnetar_P = if (is.function(model_config_reactives$nnetar_P)) model_config_reactives$nnetar_P() else NULL,
+          nnetar_size_method = if (is.function(model_config_reactives$nnetar_size_method)) model_config_reactives$nnetar_size_method() else NULL,
+          nnetar_size_manual = if (is.function(model_config_reactives$nnetar_size_manual)) model_config_reactives$nnetar_size_manual() else NULL,
+          nnetar_repeats = if (is.function(model_config_reactives$nnetar_repeats)) model_config_reactives$nnetar_repeats() else NULL,
+          nnetar_lambda_auto = if (is.function(model_config_reactives$nnetar_lambda_auto)) model_config_reactives$nnetar_lambda_auto() else NULL,
+          nnetar_lambda_manual = if (is.function(model_config_reactives$nnetar_lambda_manual)) model_config_reactives$nnetar_lambda_manual() else NULL
+        )
+        
+        # Include original filename of global holidays file, if it was uploaded
+        global_holidays_file_name_to_save <- NULL
+        if (!is.null(input$global_holidays_file$name) && nzchar(input$global_holidays_file$name)) {
+          global_holidays_file_name_to_save <- input$global_holidays_file$name
+        }
+
+
+        session_state_to_save <- list(
+          timestamp = Sys.time(),
+          app_version = utils::packageVersion("forecastApp"),
+          r_values = r_values_to_save,
+          data_input_state_values = di_state_values,
+          preprocess_state_values = pp_state_values,
+          model_config_state_values = mc_state_values,
+          global_holidays_file_name = global_holidays_file_name_to_save # Save original filename
+        )
+        
+        notification_id <- shiny::showNotification("Saving session... Please wait.", duration = NULL, type = "message")
+        on.exit(shiny::removeNotification(notification_id), add = TRUE)
+
+        tryCatch({
+          saveRDS(session_state_to_save, file = file)
+          shiny::removeModal()
+          shiny::showNotification(paste("Session saved to", basename(file)), type = "message", duration = 5)
+        }, error = function(e_save) {
+          shiny::showNotification(paste("Error saving session:", e_save$message), type = "error", duration = 10)
+        })
+      },
+      contentType = "application/octet-stream"
+    )
   })
-
-  output$trigger_session_save_download <- downloadHandler(
-    filename = function() {
-      req(input$session_filename_input)
-      # Sanitize filename to prevent invalid characters
-      sanitized_name <- gsub("[^a-zA-Z0-9_\\-\\.]", "_", input$session_filename_input)
-      if (!grepl("\\.rds$", sanitized_name, ignore.case = TRUE)) {
-        sanitized_name <- paste0(sanitized_name, ".rds")
-      }
-      sanitized_name
-    },
-    content = function(file) {
-      # Gather all data to save
-      # Main reactive values 'r'
-      r_values_to_save <- reactiveValuesToList(r)
-      
-      # Data Input module state
-      di_state_values <- list(
-        selected_date_col = if (is.function(data_input_reactives$reactive_selected_date_col)) data_input_reactives$reactive_selected_date_col() else NULL,
-        selected_value_col = if (is.function(data_input_reactives$reactive_selected_value_col)) data_input_reactives$reactive_selected_value_col() else NULL,
-        selected_format = if (is.function(data_input_reactives$reactive_selected_format)) data_input_reactives$reactive_selected_format() else NULL,
-        data_input_1_fileUpload_name = if (is.function(data_input_reactives$raw_data_name)) data_input_reactives$raw_data_name() else NULL # Store original filename
-      )
-
-      # Preprocessing module state
-      pp_state_values <- list(
-        aggregation_level = if (is.function(preprocess_reactives$reactive_agg_level)) preprocess_reactives$reactive_agg_level() else NULL,
-        aggregation_function = if (is.function(preprocess_reactives$reactive_agg_func)) preprocess_reactives$reactive_agg_func() else NULL,
-        train_test_split_ratio = if (is.function(preprocess_reactives$reactive_train_test_split)) preprocess_reactives$reactive_train_test_split() else NULL,
-        imputation_method = if (is.function(preprocess_reactives$reactive_imputation_method)) preprocess_reactives$reactive_imputation_method() else NULL,
-        transformation_method = if (is.function(preprocess_reactives$reactive_transformation_method)) preprocess_reactives$reactive_transformation_method() else NULL
-      )
-      
-      # Model configurations - exhaustive list of all inputs
-      mc_state_values <- list(
-        active_tab = if (is.function(model_config_reactives$active_tab)) model_config_reactives$active_tab() else NULL,
-        forecast_horizon = if (is.function(model_config_reactives$forecast_horizon)) model_config_reactives$forecast_horizon() else NULL,
-        # ARIMA
-        use_arima = if (is.function(model_config_reactives$use_arima)) model_config_reactives$use_arima() else NULL,
-        arima_auto = if (is.function(model_config_reactives$arima_auto)) model_config_reactives$arima_auto() else NULL, 
-        arima_p = if (is.function(model_config_reactives$arima_p)) model_config_reactives$arima_p() else NULL, 
-        arima_d = if (is.function(model_config_reactives$arima_d)) model_config_reactives$arima_d() else NULL, 
-        arima_q = if (is.function(model_config_reactives$arima_q)) model_config_reactives$arima_q() else NULL,
-        arima_seasonal = if (is.function(model_config_reactives$arima_seasonal)) model_config_reactives$arima_seasonal() else NULL, 
-        arima_P = if (is.function(model_config_reactives$arima_P)) model_config_reactives$arima_P() else NULL, 
-        arima_D = if (is.function(model_config_reactives$arima_D)) model_config_reactives$arima_D() else NULL, 
-        arima_Q = if (is.function(model_config_reactives$arima_Q)) model_config_reactives$arima_Q() else NULL, 
-        arima_period = if (is.function(model_config_reactives$arima_period)) model_config_reactives$arima_period() else NULL,
-        # ETS
-        use_ets = if (is.function(model_config_reactives$use_ets)) model_config_reactives$use_ets() else NULL,
-        ets_manual = if (is.function(model_config_reactives$ets_manual)) model_config_reactives$ets_manual() else NULL, 
-        ets_e = if (is.function(model_config_reactives$ets_e)) model_config_reactives$ets_e() else NULL, 
-        ets_t = if (is.function(model_config_reactives$ets_t)) model_config_reactives$ets_t() else NULL, 
-        ets_s = if (is.function(model_config_reactives$ets_s)) model_config_reactives$ets_s() else NULL, 
-        ets_damped_str = if (is.function(model_config_reactives$ets_damped_str)) model_config_reactives$ets_damped_str() else NULL,
-        # TBATS
-        use_tbats = (if (is.function(model_config_reactives$use_tbats)) model_config_reactives$use_tbats() else NULL) %||% FALSE,
-        # Prophet
-        use_prophet = if (is.function(model_config_reactives$use_prophet)) model_config_reactives$use_prophet() else NULL,
-        prophet_growth = if (is.function(model_config_reactives$prophet_growth)) model_config_reactives$prophet_growth() else NULL, 
-        prophet_yearly = if (is.function(model_config_reactives$prophet_yearly)) model_config_reactives$prophet_yearly() else NULL, 
-        prophet_weekly = if (is.function(model_config_reactives$prophet_weekly)) model_config_reactives$prophet_weekly() else NULL, 
-        prophet_daily = if (is.function(model_config_reactives$prophet_daily)) model_config_reactives$prophet_daily() else NULL,
-        prophet_changepoint_scale = if (is.function(model_config_reactives$prophet_changepoint_scale)) model_config_reactives$prophet_changepoint_scale() else NULL, 
-        prophet_capacity = if (is.function(model_config_reactives$prophet_capacity)) model_config_reactives$prophet_capacity() else NULL,
-        # XGBoost
-        use_xgboost = if (is.function(model_config_reactives$use_xgboost)) model_config_reactives$use_xgboost() else NULL,
-        xgb_enable_tuning = if (is.function(model_config_reactives$xgb_enable_tuning)) model_config_reactives$xgb_enable_tuning() else NULL,
-        xgb_nrounds = if (is.function(model_config_reactives$xgb_nrounds)) model_config_reactives$xgb_nrounds() else NULL, 
-        xgb_eta = if (is.function(model_config_reactives$xgb_eta)) model_config_reactives$xgb_eta() else NULL, 
-        xgb_max_depth = if (is.function(model_config_reactives$xgb_max_depth)) model_config_reactives$xgb_max_depth() else NULL,
-        xgb_subsample = if (is.function(model_config_reactives$xgb_subsample)) model_config_reactives$xgb_subsample() else NULL, 
-        xgb_colsample = if (is.function(model_config_reactives$xgb_colsample)) model_config_reactives$xgb_colsample() else NULL, 
-        xgb_gamma = if (is.function(model_config_reactives$xgb_gamma)) model_config_reactives$xgb_gamma() else NULL,
-        # GAM
-        use_gam = if (is.function(model_config_reactives$use_gam)) model_config_reactives$use_gam() else NULL,
-        gam_trend_type = if (is.function(model_config_reactives$gam_trend_type)) model_config_reactives$gam_trend_type() else NULL, 
-        gam_use_season_y = if (is.function(model_config_reactives$gam_use_season_y)) model_config_reactives$gam_use_season_y() else NULL, 
-        gam_use_season_w = if (is.function(model_config_reactives$gam_use_season_w)) model_config_reactives$gam_use_season_w() else NULL,
-        # RF
-        use_rf = if (is.function(model_config_reactives$use_rf)) model_config_reactives$use_rf() else NULL,
-        rf_enable_tuning = if (is.function(model_config_reactives$rf_enable_tuning)) model_config_reactives$rf_enable_tuning() else NULL,
-        rf_num_trees = if (is.function(model_config_reactives$rf_num_trees)) model_config_reactives$rf_num_trees() else NULL, 
-        rf_mtry = if (is.function(model_config_reactives$rf_mtry)) model_config_reactives$rf_mtry() else NULL, 
-        rf_min_node_size = if (is.function(model_config_reactives$rf_min_node_size)) model_config_reactives$rf_min_node_size() else NULL,
-        # NNETAR
-        use_nnetar = if (is.function(model_config_reactives$use_nnetar)) model_config_reactives$use_nnetar() else NULL,
-        nnetar_p = if (is.function(model_config_reactives$nnetar_p)) model_config_reactives$nnetar_p() else NULL,
-        nnetar_P = if (is.function(model_config_reactives$nnetar_P)) model_config_reactives$nnetar_P() else NULL,
-        nnetar_size_method = if (is.function(model_config_reactives$nnetar_size_method)) model_config_reactives$nnetar_size_method() else NULL,
-        nnetar_size_manual = if (is.function(model_config_reactives$nnetar_size_manual)) model_config_reactives$nnetar_size_manual() else NULL,
-        nnetar_repeats = if (is.function(model_config_reactives$nnetar_repeats)) model_config_reactives$nnetar_repeats() else NULL,
-        nnetar_lambda_auto = if (is.function(model_config_reactives$nnetar_lambda_auto)) model_config_reactives$nnetar_lambda_auto() else NULL,
-        nnetar_lambda_manual = if (is.function(model_config_reactives$nnetar_lambda_manual)) model_config_reactives$nnetar_lambda_manual() else NULL
-      )
-      
-      # Include original filename of global holidays file, if it was uploaded
-      global_holidays_file_name_to_save <- NULL
-      if (!is.null(input$global_holidays_file$name) && nzchar(input$global_holidays_file$name)) {
-        global_holidays_file_name_to_save <- input$global_holidays_file$name
-      }
-
-
-      session_state_to_save <- list(
-        timestamp = Sys.time(),
-        app_version = utils::packageVersion("forecastApp"),
-        r_values = r_values_to_save,
-        data_input_state_values = di_state_values,
-        preprocess_state_values = pp_state_values,
-        model_config_state_values = mc_state_values,
-        global_holidays_file_name = global_holidays_file_name_to_save # Save original filename
-      )
-      
-      notification_id <- shiny::showNotification("Saving session... Please wait.", duration = NULL, type = "message")
-      on.exit(shiny::removeNotification(notification_id), add = TRUE)
-
-      tryCatch({
-        saveRDS(session_state_to_save, file = file)
-        shiny::removeModal()
-        shiny::showNotification(paste("Session saved to", basename(file)), type = "message", duration = 5)
-      }, error = function(e_save) {
-        shiny::showNotification(paste("Error saving session:", e_save$message), type = "error", duration = 10)
-      })
-    },
-    contentType = "application/octet-stream"
-  )
   # --- End Save Session Logic ---
 
   # --- Load Session Logic ---
@@ -1994,5 +2003,4 @@ app_server <- function(input, output, session) {
   )
   # --- End Report Generation ---
 
-}) # End app_server
-}
+} # End app_server
