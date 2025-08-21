@@ -6,9 +6,20 @@
 #' @import shiny.i18n
 #' @import rintrojs
 #' @import bslib
+#' @importFrom golem with_golem_options
 #' @noRd
 
-i18n <- Translator$new(translation_json_path = app_sys("i18n",'translation.json'))
+# path_file_translation<-system.file("./i18n/translation.json")
+# i18n <- shiny.i18n::Translator$new(translation_json_path = path_file_translation)
+# i18n$set_translation_language('en') # Set default language to English
+
+default_translation_file_name <- get_golem_config("translation_file")
+req(default_translation_file_name, "Default translation file name not configured.")
+path_file_translation <- app_sys("i18n", default_translation_file_name)
+req(file.exists(path_file_translation), paste("Default translation file not found at:", path_file_translation))
+     
+i18n <- shiny.i18n::Translator$new(translation_json_path = path_file_translation)
+i18n$set_translation_language('en')
 
 app_ui <- function(request) {
   tagList(
@@ -295,7 +306,7 @@ app_ui <- function(request) {
 #' Includes standard golem favicon and bundle resources functionality.
 #'
 #' @import shiny
-#' @importFrom golem add_resource_path activate_js favicon bundle_resources
+#' @importFrom golem add_resource_path activate_js use_favicon bundle_resources
 #' @noRd
 golem_add_external_resources <- function() {
   # Ensure golem is listed in DESCRIPTION Imports
@@ -308,7 +319,7 @@ golem_add_external_resources <- function() {
 
   # Add other head tags like favicon and essential resources
   tags$head(
-    favicon(), # Adds favicon based on golem defaults or settings
+    use_favicon(), # Adds favicon based on golem defaults or settings
     bundle_resources( # Bundles resources from the specified path
       path = app_sys("app/www"),
       app_title = "forecastApp" # Title for the app

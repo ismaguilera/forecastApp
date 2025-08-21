@@ -51,7 +51,9 @@ Imports:
     rmarkdown,
     knitr,
     tinytex,
-    shiny.i18n
+    shiny.i18n,
+    covrpage,
+    rhub
 Suggests:
     testthat (>= 3.0.0),
     pkgload,

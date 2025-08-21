@@ -1,51 +1,49 @@
+# forecastApp: A Modular Shiny Forecasting Application
 
-# forecastApp
+`{forecastApp}` is an interactive Shiny application for time series forecasting. It provides a user-friendly interface to upload data, configure models, run forecasts, and evaluate results.
 
-`{forecastApp}` provides an interactive Shiny application for time
-series forecasting. It allows users to upload daily data, preprocess it
-(including daily/weekly aggregation and train/test splitting), configure
-and run standard forecasting models (ARIMA, Prophet, XGBoost), visualize
-results, and evaluate model performance.
+## Features
 
-## Installation
+- **Data Handling**: Upload your own daily time series data in CSV format.
+- **Preprocessing**: Aggregate data from daily to weekly, and automatically split into training and testing sets.
+- **Interactive Visualization**: Decompose time series, view autocorrelation plots (ACF/PACF), and analyze results with interactive graphs.
+- **Modeling**: Configure and run a suite of standard forecasting models:
+  - ARIMA
+  - Prophet
+  - XGBoost
+- **Evaluation**: Assess model performance with common accuracy metrics.
 
-You can install the development version of forecastApp from
-[GitHub](https://github.com/) (replace with your actual link if you host
-it there) with:
+## Architecture
 
-``` r
+This application is built using the [Golem](https://engineering-shiny.org/golem.html) framework, which structures the Shiny app as a robust and scalable R package. The functionality is broken down into discrete Shiny modules for better code organization and maintenance.
+
+## Getting Started
+
+### Installation
+
+You can install the development version of `{forecastApp}` from GitHub. You will need the `remotes` package.
+
+```r
 # install.packages("remotes") # If you don't have remotes installed
-# Replace <YOUR_GITHUB_USERNAME> with your actual username/organization
-# remotes::install_github("<YOUR_GITHUB_USERNAME>/forecastApp") 
+# Replace <YOUR_GITHUB_USERNAME> with the actual username/organization
+remotes::install_github("<YOUR_GITHUB_USERNAME>/forecastApp")
 ```
 
-*Note:* Installation might require dependent packages available on CRAN.
-Some underlying packages (like `xgboost`) might have system dependencies
-(e.g., a C++ compiler). Installation from source might also require
-Rtools (Windows) or Xcode Command Line Tools (macOS).
+**Dependencies:** The app requires several R packages available on CRAN. Some underlying packages (like `prophet` or `xgboost`) may have additional system dependencies (e.g., a C++ compiler). For installation from source, you may need Rtools (Windows) or Xcode Command Line Tools (macOS).
 
-Alternatively, if you have built the package tarball (e.g.,
-`forecastApp_0.0.0.9000.tar.gz` using `devtools::build()`):
+### Usage
 
-``` r
-# install.packages("path/to/forecastApp_0.0.0.9000.tar.gz", repos = NULL, type = "source")
-```
+Once the package is installed, you can run the application with a single command:
 
-## Example Usage
-
-Once installed, you can run the Shiny application with:
-
-``` r
+```r
 library(forecastApp)
-# Run the main application
 forecastApp::run_app()
 ```
 
-**Customize:**
+## Development
 
-- Replace `<YOUR_GITHUB_USERNAME>` with your actual GitHub username if
-  you plan to host the code there. If not, you can remove the GitHub
-  installation part or adjust it.
-- Add any other relevant badges if you set up continuous integration or
-  other services.
-- Expand the description or usage example if needed.
+This application is structured as a Golem package. To run the app in development mode, you can open the RStudio project and run the following script:
+
+```r
+source("dev/run_dev.R")
+```

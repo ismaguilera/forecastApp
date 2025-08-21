@@ -1322,7 +1322,3 @@ test_that("forecast_gam handles holiday levels correctly for future data", {
   # "EventFutureNew" if not in trained levels, should be handled as "NoHoliday" or NA then "NoHoliday".
   # `forecast_gam` uses `attr(model, "holiday_levels")` for factor creation in future_df.
 })
-
-[end of tests/testthat/test-mod_utils_train_forecast.R]
-
-[end of tests/testthat/test-mod_utils_train_forecast.R]
