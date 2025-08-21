@@ -1,21 +1,53 @@
 # forecastApp: A Modular Shiny Forecasting Application
 
-`{forecastApp}` is an interactive Shiny application for time series forecasting. It provides a user-friendly interface to upload data, configure models, run forecasts, and evaluate results.
+`{forecastApp}` is an interactive Shiny application for time series forecasting. It provides a user-friendly interface to upload data, configure various forecasting models, run predictions, and evaluate results. Built with the `golem` framework, it emphasizes modularity and scalability.
 
 ## Features
 
-- **Data Handling**: Upload your own daily time series data in CSV format.
-- **Preprocessing**: Aggregate data from daily to weekly, and automatically split into training and testing sets.
-- **Interactive Visualization**: Decompose time series, view autocorrelation plots (ACF/PACF), and analyze results with interactive graphs.
-- **Modeling**: Configure and run a suite of standard forecasting models:
-  - ARIMA
-  - Prophet
-  - XGBoost
-- **Evaluation**: Assess model performance with common accuracy metrics.
+- **Data Handling**: Upload your own daily time series data in CSV or Excel format.
+- **Preprocessing**: Aggregate data (daily to weekly), handle missing values, apply transformations, and automatically split into training and testing sets.
+- **Interactive Visualization**: Decompose time series, view autocorrelation plots (ACF/PACF), and analyze results with interactive graphs powered by `plotly`.
+- **Modeling**: Configure and run a comprehensive suite of forecasting models:
+  - ARIMA (AutoRegressive Integrated Moving Average)
+  - ETS (Exponential Smoothing State Space Model)
+  - TBATS (Trigonometric, Box-Cox, ARIMA, Trend, and Seasonal components)
+  - Prophet (from Facebook)
+  - XGBoost (eXtreme Gradient Boosting)
+  - GAM (Generalized Additive Models)
+  - Random Forest
+  - NNETAR (Neural Network Time Series)
+  The application supports hyperparameter tuning for some models (e.g., XGBoost, Random Forest) using `tidymodels` and time series cross-validation.
+- **Evaluation**: Assess model performance with common accuracy metrics (e.g., MAE, RMSE, MAPE).
+- **Session Management**: Save and load your application state, including data, configurations, and results, for continuity.
+- **Reporting**: Generate dynamic HTML or PDF reports summarizing your forecast analysis.
+- **Internationalization**: Supports multiple languages for a broader user base.
 
 ## Architecture
 
-This application is built using the [Golem](https://engineering-shiny.org/golem.html) framework, which structures the Shiny app as a robust and scalable R package. The functionality is broken down into discrete Shiny modules for better code organization and maintenance.
+This application is structured as a robust and scalable R package using the **[Golem framework](https://engineering-shiny.org/golem.html)**. Its design promotes modularity, reusability, and maintainability through the extensive use of **Shiny Modules**.
+
+Key architectural components include:
+
+-   **Main Application (`app.R`, `R/app_ui.R`, `R/app_server.R`):**
+    -   `app.R`: The entry point for launching the Shiny application.
+    -   `R/app_ui.R`: Defines the overall user interface layout using `bslib::page_navbar`, organizing the application into distinct navigation panels (Data, Model, Forecast Results, Validation, About). It integrates the UI components of various Shiny modules.
+    -   `R/app_server.R`: Manages the application's reactive state using a central `reactiveValues` object (`r`). It orchestrates the data flow between modules, calls the server-side logic of each module, handles model execution, metric calculation, session management, and report generation.
+-   **Shiny Modules (`R/mod_*.R`):** Each significant feature or section of the application is encapsulated within its own Shiny module. This includes:
+    -   `mod_data_input`: For uploading and selecting time series data.
+    -   `mod_preprocess_controls`: For data aggregation, imputation, transformation, and train/test splitting.
+    -   `mod_model_config`: For selecting and configuring parameters for each forecasting model.
+    -   `mod_decomposition_plot`: For visualizing time series decomposition.
+    -   `mod_results_plot`: For displaying the main forecast plots.
+    -   `mod_results_table`: For presenting model performance metrics.
+    -   `mod_extra_plots`: For additional diagnostic plots.
+    -   `mod_model_summary`: For summarizing the configurations and outcomes of run models.
+    -   `mod_validation`: For time series cross-validation.
+    Each `mod_*.R` file typically contains both `*_ui` (User Interface) and `*_server` (Server Logic) functions for its specific functionality.
+-   **Time Series Ecosystem:** The application leverages a rich ecosystem of R packages for time series analysis and machine learning, including `forecast`, `prophet`, `xgboost`, `mgcv`, `ranger`, `timetk`, `recipes`, `parsnip`, `workflows`, `tune`, `dials`, and `yardstick`.
+-   **Internationalization (`inst/i18n/`):** Translation files (JSON) are used to support multiple languages, making the UI adaptable to different locales.
+-   **Data Storage (`inst/extdata/`):** Default datasets and holiday files are stored here for easy access and demonstration.
+
+This modular architecture ensures that the application is maintainable, testable, and extensible, allowing for easy addition of new models or features.
 
 ## Getting Started
 
@@ -29,7 +61,7 @@ You can install the development version of `{forecastApp}` from GitHub. You will
 remotes::install_github("<YOUR_GITHUB_USERNAME>/forecastApp")
 ```
 
-**Dependencies:** The app requires several R packages available on CRAN. Some underlying packages (like `prophet` or `xgboost`) may have additional system dependencies (e.g., a C++ compiler). For installation from source, you may need Rtools (Windows) or Xcode Command Line Tools (macOS).
+**Dependencies:** The app requires several R packages available on CRAN. Some underlying packages (like `prophet` or `xgboost`) may have additional system dependencies (e.g., a C++ compiler, Python for Prophet). For installation from source, you may need Rtools (Windows) or Xcode Command Line Tools (macOS). Ensure you have these system dependencies installed if you encounter issues.
 
 ### Usage
 
@@ -40,10 +72,18 @@ library(forecastApp)
 forecastApp::run_app()
 ```
 
-## Development
+### Development
 
 This application is structured as a Golem package. To run the app in development mode, you can open the RStudio project and run the following script:
 
 ```r
 source("dev/run_dev.R")
 ```
+
+## Deployment
+
+This application is deployed and publicly accessible on `shinyapps.io`:
+
+[https://ismaguilera.shinyapps.io/forecastApp/](https://ismaguilera.shinyapps.io/forecastApp/)
+
+`shinyapps.io` is a cloud-based platform provided by Posit (formerly RStudio) that allows R users to host, share, and scale their Shiny applications without needing to manage servers or infrastructure. It simplifies the process of making Shiny apps available to a wider audience.
